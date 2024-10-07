@@ -9,7 +9,7 @@ import numpy as np
 import sys
 
 def generate_tuning_curve( function = 'vm', 
-                           center = 2, A = 2, width = 1.6, flatness = 0.1, b = 0.1):
+                           center = 2.8, A = 1, width = 0.2, flatness = 0.25, b = 0.1):
     # Reference: https://swindale.ecc.ubc.ca/wp-content/uploads/2020/09/orientation_tuning_curves.pdf
     
     if function == 'vm':
