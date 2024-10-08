@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from network import NeuralSystem, generate_tuning_curve, generate_variance_matrix
 
-def plot_simulation( system, stimolus ):
+def plot_simulation( system, stimolus, plot_gradient = False ):
     
     markers = ['o','+','s','^','*','v']
         
@@ -26,13 +26,24 @@ def plot_simulation( system, stimolus ):
                     label = r"{:.2f}".format(  t/np.pi ) 
                     )
         
-        
+        if plot_gradient:
+            # Plot Derivatives
+            x,y  = [ f(t) for f in system.mu]
+            grad = [ f(t) for f in system.grad]
+            grad /= np.linalg.norm( grad )
+            dx, dy = grad
+            axs[0].arrow( x,y, dx, dy, color = 'black', zorder = 13, head_width = .15)
+                     
     # Plot Signal Manifold
-    theta = np.linspace(stimolus[0], stimolus[-1] + np.pi,1000)
+    theta = np.linspace(0, 2*np.pi,1000)
     axs[0].plot( list( map( system.mu[0], theta)), 
                  list( map( system.mu[1], theta)), 
-                 c = 'black',
+                 color = 'black',
                  lw = 1 )
+    
+    # Plot Gradient
+    
+    
     
     axs[0].set_xlabel('Response 1', weight='bold',size=18)
     axs[0].set_ylabel('Response 2', weight='bold',size=18)
