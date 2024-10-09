@@ -79,27 +79,16 @@ class NeuralSystem(object):
         
         # Define Covariance Matrix
         self.sigma = generate_variance_matrix(self.V, self.rho)
-        self.N_trial    = N_trial
+        self.N_trial    = int(N_trial)
         
         # Define neurons
         self.neurons    = lambda x: neural_dynamics(x, self.mu, self.sigma, self.N_trial)
 
         return
     
-    
+     
 if __name__ == '__main__':
     from plot_tools import plot_simulation
-    
-    parameters = { 'A'              : 1 ,
-                   'width'          : .2,
-                   'center'         : 2.8,
-                   'function'       : 'fvm',
-                   'flatness'       : 0.5,
-                   'b'              : 0.0,
-                   'center_shift'   : 0.5,
-                   'V'              : 1e-3,
-                   'rho'            : 0.6 }
-    
     
     parameters = { 'A'              : 5,
                    'width'          : .2,
@@ -114,4 +103,4 @@ if __name__ == '__main__':
     stimuli = np.pi*np.array( [0, 1/3, 0.5, 2/3, 0.8,1,1.2,1+1/3,1.6666])
     
     system = NeuralSystem( parameters )
-    plot_simulation(system, stimuli, plot_gradient=True)
+    plot_simulation(system, stimuli)

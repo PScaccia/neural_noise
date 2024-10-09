@@ -9,8 +9,22 @@ Created on Thu Oct  3 13:10:10 2024
 import matplotlib.pyplot as plt
 import numpy as np
 from network import NeuralSystem, generate_tuning_curve, generate_variance_matrix
+import matplotlib.collections as mcoll
 
-def plot_simulation( system, stimolus, plot_gradient = False ):
+
+def make_segments(x, y):
+    """
+    Create list of line segments from x and y coordinates, in the correct format
+    for LineCollection: an array of the form numlines x (points per line) x 2 (x
+    and y) array
+    """
+
+    points = np.array([x, y]).T.reshape(-1, 1, 2)
+    segments = np.concatenate([points[:-1], points[1:]], axis=1)
+    return segments
+
+
+def plot_simulation( system, stimolus, plot_gradient = False, E = None ):
     
     markers = ['o','+','s','^','*','v']
         
@@ -36,19 +50,44 @@ def plot_simulation( system, stimolus, plot_gradient = False ):
                      
     # Plot Signal Manifold
     theta = np.linspace(0, 2*np.pi,1000)
-    axs[0].plot( list( map( system.mu[0], theta)), 
-                 list( map( system.mu[1], theta)), 
-                 color = 'black',
-                 lw = 1 )
+    mu1 = list( map( system.mu[0], theta))
+    mu2 = list( map( system.mu[1], theta))
     
-    # Plot Gradient
+    if E is not None:
+        cmap='jet'
+        Emin = 0
+        Emax = 4
+        norm=plt.Normalize(Emin, Emax)
+        #c = plt.cm.jet( (E - Emin)/(Emax - Emin) )
+        segments = make_segments(mu1, mu2)
+        lc = mcoll.LineCollection(segments, array=E, cmap=cmap , norm=norm,
+                                  linewidth=2, alpha=1)
+
+        axs[0].add_collection(lc)
+        cm = fig.colorbar(lc,ax=axs[0])
+        cm.set_label('MSE',size = 15)
+
+        """
+        for i,mu1,mu2 in zip( range(theta.size), mu1, list( map( system.mu[1], theta)) ):
+            d=axs[0].scatter( mu1, 
+                             mu2,
+                             color = c[i],
+                             s = 5 )
+        cb = fig.colorbar(d)
+        cb.
+        """
+    else:
+        axs[0].plot( list( map( system.mu[0], theta)), 
+                     list( map( system.mu[1], theta)), 
+                     color = 'black',
+                     lw = 1 )
     
-    
-    
+    axs[0].set_xlim(min(mu1) - 2*system.V, max(mu1) + 2*system.V)
+    axs[0].set_ylim(min(mu2) - 2*system.V, max(mu2) + 2*system.V)
     axs[0].set_xlabel('Response 1', weight='bold',size=18)
     axs[0].set_ylabel('Response 2', weight='bold',size=18)
     axs[0].legend( title = r'Theta ($\pi$)')
-    
+    axs[0].set_title(f"N: {system.N_trial}",size=12)
     plot_tuning_curves(*system.mu, ax = axs[1])
     plt.show()
     
@@ -71,6 +110,16 @@ def plot_tuning_curves(mu1, mu2, ax = None):
         ax.set_ylabel("Activity",size=15,weight='bold')
     plt.show()    
     return
+
+def plot_theta_error(theta, MSE):
+    
+    fig, axs = plt.subplots(1,2,figsize = (14,6))
+    axs[0].plot(theta, MSE)
+    axs[0].set_ylim(0,5)
+    plt.show()
+    
+    return
+
 
 def run_simulation( peak_shift = 0.3, A = 1, width = 1, flatness = 1, function = 'vm', V = 1e-2, rho = 0.7):
     

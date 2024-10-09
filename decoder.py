@@ -7,7 +7,11 @@ Created on Tue Oct  8 16:59:34 2024
 """
 
 import numpy as np
+import sys
+from network import NeuralSystem
 
+def moving_average(x,w):
+    return np.convolve(x, np.ones(w), 'valid') / w
 
 def get_opt_ext( system, r, first_guess, eps = 1e-12, max_iter = 100, debug = False):
     
@@ -46,7 +50,17 @@ def get_opt_ext( system, r, first_guess, eps = 1e-12, max_iter = 100, debug = Fa
         return x
     
     
-def compute_theta_error(system, theta_array):
+    return 
+
+def bayesian_decoder(system, r):
+    from scipy.optimize import minimize_scalar
+    InvSigma = np.linalg.inv( system.sigma )
+    mu_vect = lambda x :  np.array([system.mu[0](x),system.mu[1](x)]) 
+    logL = lambda x : (  r - mu_vect(x) ).transpose().dot( InvSigma ).dot( r - mu_vect(x) )
+    return minimize_scalar(logL, bounds = [0, 2*np.pi])
+
+
+def compute_theta_error(system, theta_array, decoder = 'optimal'):
     
     E = np.empty_like( theta_array )*np.nan
 
@@ -54,9 +68,44 @@ def compute_theta_error(system, theta_array):
         print(f"{i+1}/{len(theta_array)}")
 
         r_sampling = system.neurons(theta)
-        # theta_ext_sampling = [ get_opt_ext(system, r, [0.5,0.9]) for r in r_sampling ]
+        if decoder == 'optimal':
+            theta_ext_sampling = [ bayesian_decoder(system, r) for r in r_sampling ]
+        else:
+            sys.exit("Not implemented yet!")
+            
         theta_ext_sampling = r_sampling.mean(axis=0)
         
         E[i] = np.mean( (theta_ext_sampling - theta )**2)
         
     return E
+
+if __name__ == '__main__':
+    from plot_tools import plot_simulation, plot_theta_error
+    
+    parameters = { 'A'              : 5,
+                   'width'          : .2,
+                   'center'         : 2.8,
+                   'function'       : 'fvm',
+                   'flatness'       : 0.1,
+                   'b'              : 0.0,
+                   'center_shift'   : 0.5,
+                   'V'              : 5e-1,
+                   'rho'            : 0.5 }
+    
+    # Define plot
+    stimuli = np.pi*np.array( [ 2/3 ])
+    #    stimuli = np.pi*np.array( [0, 1/3, 0.5, 2/3, 0.8,1,1.2,1+1/3,1.6666])
+
+    # Define Neural System
+    system = NeuralSystem( parameters )
+
+    # Compute Decoder MSE
+    theta = np.linspace(0,2*np.pi,1000)
+    MSE = compute_theta_error( system, theta )
+
+    # Plot MSE along Signal Manifold    
+    plot_simulation( system, stimuli, E = MSE)
+    
+    # Plot Decoder Error Analysis
+    plot_theta_error(theta, MSE)
+            
