@@ -56,7 +56,7 @@ def plot_simulation( system, stimolus, plot_gradient = False, E = None ):
     if E is not None:
         cmap='jet'
         Emin = 0
-        Emax = 4
+        Emax = 0.7
         norm=plt.Normalize(Emin, Emax)
         #c = plt.cm.jet( (E - Emin)/(Emax - Emin) )
         segments = make_segments(mu1, mu2)
@@ -111,15 +111,44 @@ def plot_tuning_curves(mu1, mu2, ax = None):
     plt.show()    
     return
 
-def plot_theta_error(theta, MSE):
+def plot_theta_error(theta, theta_sampling, MSE , title = ' '):
     
     fig, axs = plt.subplots(1,2,figsize = (14,6))
-    axs[0].plot(theta, MSE)
-    axs[0].set_ylim(0,5)
+    axs[0].plot(theta, MSE, c='blue')
+    axs[0].set_xlabel(r'$\mathbf{\theta}$',size = 15)
+    #axs[0].set_ylabel(r'$\mathbf{ \hat{\theta} }$',size = 15)
+    axs[0].set_ylabel( "MSE", weight = 'bold', size = 15)
+    
+    #axs[0].plot( theta, theta - theta_sampling, c='green', label = 'bias')
+    axs[0].set_ylim(0,0.7)
+    axs[0].set_title(title)
+    
+    av_theta = theta_sampling.mean( axis = 1 )
+    
+    axs[1].plot( theta, av_theta, c = 'red')
+    axs[1].set_xlabel(r'$\mathbf{\theta}$', size = 15)
+    axs[1].set_ylabel(r"$\mathbf{ \theta - \langle \hat{\theta} } \rangle $", size = 15)
+    
+    axs[1].set_title(title)
     plt.show()
     
     return
 
+def plot_theta_ext_prob(theta, theta_sampling, outdir = './'):
+    
+    nbins = 25
+    dx = (theta[-1] - theta[0])/nbins
+    bins = np.linspace(theta[0],theta[-1]+dx,nbins)
+    for i,t in enumerate(theta):
+        plt.hist(theta_sampling[i,:],bins=bins,label=r"$\theta:$ {:.2f}".format(t))
+        plt.xlabel(r'$\mathbf{\theta}$', size = 15)
+        plt.legend(loc="upper left")
+        plt.savefig(outdir+f'/{i}.png')
+        plt.clf()
+        
+    print("Done")
+    
+    return
 
 def run_simulation( peak_shift = 0.3, A = 1, width = 1, flatness = 1, function = 'vm', V = 1e-2, rho = 0.7):
     
