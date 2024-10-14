@@ -49,7 +49,7 @@ def plot_simulation( system, stimolus, plot_gradient = False, E = None ):
             axs[0].arrow( x,y, dx, dy, color = 'black', zorder = 13, head_width = .15)
                      
     # Plot Signal Manifold
-    theta = np.linspace(0, 2*np.pi,1000)
+    theta = np.linspace(0, np.pi,1000)
     mu1 = list( map( system.mu[0], theta))
     mu2 = list( map( system.mu[1], theta))
     
@@ -82,8 +82,8 @@ def plot_simulation( system, stimolus, plot_gradient = False, E = None ):
                      color = 'black',
                      lw = 1 )
     
-    axs[0].set_xlim(min(mu1) - 2*system.V, max(mu1) + 2*system.V)
-    axs[0].set_ylim(min(mu2) - 2*system.V, max(mu2) + 2*system.V)
+    axs[0].set_xlim(min(mu1) - 5*system.V, max(mu1) + 5*system.V)
+    axs[0].set_ylim(min(mu2) - 5*system.V, max(mu2) + 5*system.V)
     axs[0].set_xlabel('Response 1', weight='bold',size=18)
     axs[0].set_ylabel('Response 2', weight='bold',size=18)
     axs[0].legend( title = r'Theta ($\pi$)')

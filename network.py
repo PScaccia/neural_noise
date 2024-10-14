@@ -9,6 +9,12 @@ import numpy as np
 import sys
 import progressbar
 
+
+def generate_tuning_curve_from_fit(fit):    
+    theta = np.linspace(0, np.pi, 180)
+    return  lambda x : np.interp(x, theta, fit, left = np.nan, right = np.nan)
+
+
 def generate_tuning_curve( function = 'vm', 
                            center = 2.8, A = 1, width = 0.2, flatness = 0.25, b = 0.1):
     
