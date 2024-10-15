@@ -50,8 +50,11 @@ def MAP_decoder(system, r):
     mu_vect       = lambda x :  np.array([system.mu[0](x), system.mu[1](x)]) 
     cost_function = lambda x : (  r - mu_vect(x) ).transpose().dot( InvSigma ).dot( r - mu_vect(x) )
     
+    points = list(map(cost_function, THETA))
+    return THETA[np.argmin(points)]
+   
     # Return minimum
-    return (minimize_scalar(cost_function, bounds = [THETA[0], THETA[-1]]).x)
+#    return (minimize_scalar(cost_function, bounds = [THETA[0], THETA[-1]]).x)
 
 
 def sample_theta_ext(system, theta_array, decoder = 'bayesian'):
