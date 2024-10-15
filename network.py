@@ -9,10 +9,18 @@ import numpy as np
 import sys
 import progressbar
 
+THETA = np.linspace(0, 2*np.pi, 360)
+
 
 def generate_tuning_curve_from_fit(fit):    
-    theta = np.linspace(0, np.pi, 180)
-    return  lambda x : np.interp(x, theta, fit, left = np.nan, right = np.nan)
+    # Parametri in ordine di apparenza: 
+    #     area (A)
+    #     direzione preferita (mu)
+    #     parametro di concentrazione (s)
+    #     baseline (b)
+    #     parametro di flatness (g).
+    #
+    return  lambda x : np.interp(x, THETA, fit, left = np.nan, right = np.nan)
 
 
 def generate_tuning_curve( function = 'vm', 
@@ -21,11 +29,9 @@ def generate_tuning_curve( function = 'vm',
     if function == 'vm':
         # Reference: https://www.biorxiv.org/content/10.1101/2024.06.26.600826.abstract
         return lambda x : A*( ( (np.exp( np.cos(x - center)/width) - np.exp(-1/width) ) /  (np.exp(1/width) - np.exp(-1/width)) )) + b 
-    
     elif function == 'fvm':
         # Reference: https://swindale.ecc.ubc.ca/wp-content/uploads/2020/09/orientation_tuning_curves.pdf
         return lambda x: A*np.exp( (  np.cos(( x - center - abs(flatness)*np.sin(2*(x - center)) )) - 1)/width )  + b 
-    
     else:
         sys.exit("Unknown function")
 
@@ -85,6 +91,8 @@ class NeuralSystem(object):
         
         # Define Covariance Matrix
         self.sigma = generate_variance_matrix(self.V, self.rho)
+        self.inv_sigma = np.linalg.inv( self.sigma )
+        
         self.N_trial    = int(N_trial)
         
         # Define neurons

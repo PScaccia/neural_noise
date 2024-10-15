@@ -8,7 +8,7 @@ Created on Thu Oct  3 13:10:10 2024
 
 import matplotlib.pyplot as plt
 import numpy as np
-from network import NeuralSystem, generate_tuning_curve, generate_variance_matrix
+from network import NeuralSystem, generate_tuning_curve, generate_variance_matrix, THETA
 import matplotlib.collections as mcoll
 
 
@@ -37,7 +37,7 @@ def plot_simulation( system, stimolus, plot_gradient = False, E = None ):
         axs[0].scatter(data[:,0],data[:,1],
                     alpha=0.5,
                     marker=markers[ j ],
-                    label = r"{:.2f}".format(  t/np.pi ) 
+                    label = r"{:.3f}".format(  t ) 
                     )
         
         if plot_gradient:
@@ -49,9 +49,8 @@ def plot_simulation( system, stimolus, plot_gradient = False, E = None ):
             axs[0].arrow( x,y, dx, dy, color = 'black', zorder = 13, head_width = .15)
                      
     # Plot Signal Manifold
-    theta = np.linspace(0, np.pi,1000)
-    mu1 = list( map( system.mu[0], theta))
-    mu2 = list( map( system.mu[1], theta))
+    mu1 = list( map( system.mu[0], THETA))
+    mu2 = list( map( system.mu[1], THETA))
     
     if E is not None:
         cmap='jet'
@@ -77,8 +76,8 @@ def plot_simulation( system, stimolus, plot_gradient = False, E = None ):
         cb.
         """
     else:
-        axs[0].plot( list( map( system.mu[0], theta)), 
-                     list( map( system.mu[1], theta)), 
+        axs[0].plot( list( map( system.mu[0], THETA)), 
+                     list( map( system.mu[1], THETA)), 
                      color = 'black',
                      lw = 1 )
     
@@ -86,7 +85,7 @@ def plot_simulation( system, stimolus, plot_gradient = False, E = None ):
     axs[0].set_ylim(min(mu2) - 5*system.V, max(mu2) + 5*system.V)
     axs[0].set_xlabel('Response 1', weight='bold',size=18)
     axs[0].set_ylabel('Response 2', weight='bold',size=18)
-    axs[0].legend( title = r'Theta ($\pi$)')
+    axs[0].legend( title = r'Theta')
     axs[0].set_title(f"N: {system.N_trial}",size=12)
     plot_tuning_curves(*system.mu, ax = axs[1])
     plt.show()
@@ -95,17 +94,15 @@ def plot_simulation( system, stimolus, plot_gradient = False, E = None ):
     return 
 
 def plot_tuning_curves(mu1, mu2, ax = None):
-
-    theta = np.linspace(0,2*np.pi,1000)
     
     if ax is None:
-        plt.plot(theta, mu1(theta), label = 'Neuron 1')
-        plt.plot(theta, mu2(theta), label = 'Neuron 2')
+        plt.plot(THETA, mu1(THETA), label = 'Neuron 1')
+        plt.plot(THETA, mu2(THETA), label = 'Neuron 2')
         plt.xlabel(r"$\mathbf{\theta} [\pi]$",size=15)
         plt.ylabel("Activity",size=15,weight='bold')
     else:
-        ax.plot(theta, mu1(theta), label = 'Neuron 1')
-        ax.plot(theta, mu2(theta), label = 'Neuron 2')
+        ax.plot(THETA, mu1(THETA), label = 'Neuron 1')
+        ax.plot(THETA, mu2(THETA), label = 'Neuron 2')
         ax.set_xlabel(r"$\mathbf{\theta}$ (rad)",size=15)
         ax.set_ylabel("Activity",size=15,weight='bold')
     plt.show()    
