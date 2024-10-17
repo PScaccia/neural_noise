@@ -157,12 +157,18 @@ def plot_theta_ext_prob(theta, theta_sampling, outdir = './'):
     
     return
 
-def plot_system(system):
+def plot_gradient_space(system):
     
+    fig,ax = plt.subplots(figsize=(10,10))
+    evals, evect = np.linalg.eig(system.sigma)
+    angle = np.arctan2(evect[1,0], evect[0,0])*180/np.pi
+    
+    width, height = np.sqrt(evals)
     
     plt.plot(system.grad[0](THETA), system.grad[1](THETA), c= 'black')
     plt.plot(system.V*np.cos(THETA), system.V*np.sin(THETA),ls='--',c='grey')
-    
+    ell = plt.matplotlib.patches.Ellipse([0,0], width, height)
+    ax.add_patch(ell)
     plt.show()
     
     return
