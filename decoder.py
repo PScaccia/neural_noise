@@ -58,13 +58,11 @@ def MAP_decoder(system, r):
 
 
 def sample_theta_ext(system, theta_array, decoder = 'bayesian'):
-    import progressbar
-    print("DECODER: ", decoder)
+    from tqdm import tqdm
     theta_ext_sampling = np.empty( ( len(theta_array), system.N_trial ) )*np.nan
-        
-    bar = progressbar.ProgressBar(max_size = len(theta_array) )
-    
-    for i, theta in enumerate(theta_array):
+            
+    for i,theta in zip(tqdm(range(len(theta_array)), desc = 'Computing decoding error: ' ), theta_array):
+    # for i, theta in enumerate(theta_array):
         
         r_sampling = system.neurons(theta)
         if decoder == 'bayesian':
@@ -73,47 +71,77 @@ def sample_theta_ext(system, theta_array, decoder = 'bayesian'):
             theta_ext_sampling[i,:] = [ MAP_decoder(system, r) for r in r_sampling ]
         else:
             sys.exit("Not implemented yet!")
-            
-        bar.update(i)
-        
+                    
     return theta_ext_sampling
 
-
+def compute_MSE(theta_sampling):
+    error = np.array([  1 - np.cos(t - theta_sampling[i,:] )  for i,t in enumerate(THETA) ])
+    return np.mean( error, axis = 1)
+    
 if __name__ == '__main__':
     from plot_tools import plot_simulation, plot_theta_error, plot_theta_ext_prob
+    from network import generate_tuning_curve_from_fit
+    from cases import *
+    import os
+    # import argparse
+
+    # parser = argparse.ArgumentParser()
     
-    parameters = { 'A'              : 5,
-                   'width'          : .2,
-                   'center'         : 2.8,
-                   'function'       : 'fvm',
-                   'flatness'       : 0.1,
-                   'b'              : 0.0,
-                   'center_shift'   : 0.5,
-                   'V'              : 5e-2,
-                   'rho'            : 0.05 }
+    outdir = '/home/paolos/Pictures/decoding/case1/'
+    save_theta_sampling = True
+    DECODER = 'bayesian'
+    CASE    = CASE_1
+
+    print()    
+    print("CASE:     1")    
+    print("DECODER: ", DECODER)
+    print()    
+
+    
+    # parser.add_argument('-c','--case',type=str,required=True, choices = ['case1', 'case2', 'case3', 'case4'],
+    #                     help="Simulation's scenario")
+    # parser.add_argument('-o','--outdir',type=str,required=False,default="./")    
+    # args = parser.parse_args()
+    
+    # data = np.load('/home/paolos/data/quad_fits.npz')    
+    # fit = data['quad_ftvm_fits'][:]
     
     # Define plot
-    stimuli = np.pi*np.array( [ 2/3 ])
+    stimuli = np.array( [ np.pi ])
     #    stimuli = np.pi*np.array( [0, 1/3, 0.5, 2/3, 0.8,1,1.2,1+1/3,1.6666])
 
     # Define Neural System
-    system = NeuralSystem( parameters, N_trial=200)
-
+    system = NeuralSystem( CASE, N_trial=500)
+    # system.mu = [ generate_tuning_curve_from_fit(fit[1] - data['quad_ftvm_fit_parameters'][1,-2]),
+    #               generate_tuning_curve_from_fit(fit[2]*( 55.62/73.80) - data['quad_ftvm_fit_parameters'][2,-2])  ]
+    # del(data, fit)
+    
     # Compute Decoder MSE
-    theta_sampling = sample_theta_ext( system, THETA )
+    theta_sampling = sample_theta_ext( system, THETA, decoder = DECODER )
+    if save_theta_sampling:
+        theta_outfile = './theta_sampling.txt'
+        with open(theta_outfile,"w") as ofile:
+            for k,v in CASE.items():
+                print(f"# {k} : {v}", file = ofile)
+            print(f"# DECODER {DECODER}", file = ofile)
+            np.savetxt(ofile, theta_sampling)
+            print("Saved theta sampling in ", theta_outfile)
     
     error = np.array([  1 - np.cos(t - theta_sampling[i,:] )  for i,t in enumerate(THETA) ])
 
     MSE = np.mean( error, axis = 1)
+    FI=np.array(list(map(system.linear_fisher, THETA)))
     
     # Plot MSE along Signal Manifold    
-    plot_simulation( system, stimuli, E = MSE)
+    plot_simulation( system, stimuli, E = MSE, outdir = outdir)
     
     # Plot Decoder Error Analysis
-    plot_theta_error(THETA, theta_sampling, MSE, title = f'N: {system.N_trial}')
+    plot_theta_error(THETA, theta_sampling, MSE, FI = FI, title = f'N: {system.N_trial}', outdir = outdir)
     
     # Plot Histograms
-    plot_theta_ext_prob(THETA, theta_sampling, outdir = '/home/paolos/Pictures/decoding')
-    
+    plot_theta_ext_prob(THETA, theta_sampling, outdir = outdir)
+    os.system(f"convert -delay 5 -loop 0 {outdir}/prob_*.png {outdir}/decoding_prob.gif")
+    os.system(f"rm {outdir}/prob_*.png")
+    print(f"Created animation in {outdir}/decoding_prob.gif")
 
             

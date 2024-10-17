@@ -24,7 +24,7 @@ def make_segments(x, y):
     return segments
 
 
-def plot_simulation( system, stimolus, plot_gradient = False, E = None ):
+def plot_simulation( system, stimolus, plot_gradient = False, E = None, outdir = None):
     
     markers = ['o','+','s','^','*','v']
         
@@ -44,7 +44,7 @@ def plot_simulation( system, stimolus, plot_gradient = False, E = None ):
             # Plot Derivatives
             x,y  = [ f(t) for f in system.mu]
             grad = [ f(t) for f in system.grad]
-            grad /= np.linalg.norm( grad )
+            #grad /= np.linalg.norm( grad )
             dx, dy = grad
             axs[0].arrow( x,y, dx, dy, color = 'black', zorder = 13, head_width = .15)
                      
@@ -55,7 +55,7 @@ def plot_simulation( system, stimolus, plot_gradient = False, E = None ):
     if E is not None:
         cmap='jet'
         Emin = 0
-        Emax = 0.7
+        Emax = np.percentile(E,90)
         norm=plt.Normalize(Emin, Emax)
         #c = plt.cm.jet( (E - Emin)/(Emax - Emin) )
         segments = make_segments(mu1, mu2)
@@ -81,14 +81,20 @@ def plot_simulation( system, stimolus, plot_gradient = False, E = None ):
                      color = 'black',
                      lw = 1 )
     
-    axs[0].set_xlim(min(mu1) - 5*system.V, max(mu1) + 5*system.V)
-    axs[0].set_ylim(min(mu2) - 5*system.V, max(mu2) + 5*system.V)
+    s = np.sqrt(system.V)
+    axs[0].set_xlim(min(mu1) - 2*s, max(mu1) + 2*s)
+    axs[0].set_ylim(min(mu2) - 2*s, max(mu2) + 2*s)
     axs[0].set_xlabel('Response 1', weight='bold',size=18)
     axs[0].set_ylabel('Response 2', weight='bold',size=18)
     axs[0].legend( title = r'Theta')
     axs[0].set_title(f"N: {system.N_trial}",size=12)
     plot_tuning_curves(*system.mu, ax = axs[1])
-    plt.show()
+    
+    if outdir is not None:
+        plt.savefig(outdir + '/simulation.png',bbox_inches='tight',dpi=300)
+        print("Simulation plot saved in ",outdir + "/simulation.png")
+    else:
+        plt.show()
     
     
     return 
@@ -105,20 +111,20 @@ def plot_tuning_curves(mu1, mu2, ax = None):
         ax.plot(THETA, mu2(THETA), label = 'Neuron 2')
         ax.set_xlabel(r"$\mathbf{\theta}$ (rad)",size=15)
         ax.set_ylabel("Activity",size=15,weight='bold')
-    plt.show()    
     return
 
-def plot_theta_error(theta, theta_sampling, MSE , title = ' '):
+def plot_theta_error(theta, theta_sampling, MSE , title = ' ', outdir = None, FI = None):
     
-    fig, axs = plt.subplots(1,2,figsize = (14,6))
-    axs[0].plot(theta, MSE, c='blue')
-    axs[0].set_xlabel(r'$\mathbf{\theta}$',size = 15)
-    #axs[0].set_ylabel(r'$\mathbf{ \hat{\theta} }$',size = 15)
-    axs[0].set_ylabel( "MSE", weight = 'bold', size = 15)
-    
-    #axs[0].plot( theta, theta - theta_sampling, c='green', label = 'bias')
-    axs[0].set_ylim(0,0.7)
+    fig, axs = plt.subplots(2,1,figsize = (10,10))
+    axs[0].plot(theta, MSE, c='blue', label = 'Decoding Error',marker='o',ms=3)
+    axs[0].set_xlabel(r'$\mathbf{\theta}$',size = 15)    
+    axs[0].set_ylabel( "MSE", weight = 'bold', size = 15)    
     axs[0].set_title(title)
+    axs[0].legend(loc='upper left')
+    if FI is not None:
+        ax_twin = axs[0].twinx()
+        ax_twin.plot(theta, 1/FI, label = 'Inv. Fisher Information',c='black')
+    plt.legend(loc = 'upper right')
     
     av_theta = theta_sampling.mean( axis = 1 )
     
@@ -127,7 +133,11 @@ def plot_theta_error(theta, theta_sampling, MSE , title = ' '):
     axs[1].set_ylabel(r"$\mathbf{ \theta - \langle \hat{\theta} } \rangle $", size = 15)
     
     axs[1].set_title(title)
-    plt.show()
+    if outdir is not None:
+        plt.savefig(outdir + '/MSE.png',bbox_inches='tight',dpi=300)
+        print("MSE plot saved in in ",outdir+"/MSE.png")
+    else:
+        plt.show()
     
     return
 
@@ -140,13 +150,22 @@ def plot_theta_ext_prob(theta, theta_sampling, outdir = './'):
         plt.hist(theta_sampling[i,:],bins=bins,label=r"$\theta:$ {:.2f}".format(t))
         plt.xlabel(r'$\mathbf{\theta}$', size = 15)
         plt.legend(loc="upper left")
-        plt.savefig(outdir+f'/{i}.png')
+        plt.savefig(outdir+f'/prob_{i:03}.png')
         plt.clf()
         
-    print("Done")
+    print("Saved PDFs in ",outdir)
     
     return
 
+def plot_system(system):
+    
+    
+    plt.plot(system.grad[0](THETA), system.grad[1](THETA), c= 'black')
+    plt.plot(system.V*np.cos(THETA), system.V*np.sin(THETA),ls='--',c='grey')
+    
+    plt.show()
+    
+    return
 def run_simulation( peak_shift = 0.3, A = 1, width = 1, flatness = 1, function = 'vm', V = 1e-2, rho = 0.7):
     
     # System params
