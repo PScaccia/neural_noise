@@ -94,21 +94,30 @@ def save_sampling(system, theta_sampling, case, outfile):
     
     return
 
+def parser():
+    import argparse
+    
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-d','--decoder',type=str,required=False,choice=['bayesian','MAP'],default='bayesian')
+    parser.add_argument('-c','--case',type=int,required=False,default=1,help="System Configuration")
+    parser.add_argument('-N','--n_trials',type=int,required=False,default=1000,help="Numerosity of the sampling")
+    return parser.parse_args()
+
 if __name__ == '__main__':
     from plot_tools import  *
     from cases import CASES
     import os
     from scipy.interpolate import splrep, BSpline
     
-    # import argparse
-    # parser = argparse.ArgumentParser()
+    # Parse Arguments
+    args = parser()
     
     # Init Simulation
     save_theta_sampling = True
-    DECODER = 'bayesian'
-    CASE    = 1
-    outdir = f'/home/paolos/Pictures/decoding/case{CASE}/'
-    N_trial = 1000
+    DECODER = args.decoder
+    CASE    = args.case
+    outdir  = f'/home/paolos/Pictures/decoding/case{CASE}/'
+    N_trial = args.n_trials
     sampling_file         = outdir + f'/theta_sampling_case{CASE}.txt'
     control_sampling_file = sampling_file.replace('.txt','_control.txt')
     
