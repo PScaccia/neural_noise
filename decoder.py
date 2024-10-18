@@ -94,12 +94,24 @@ def save_sampling(system, theta_sampling, case, outfile):
     
     return
 
+def get_filtered_R(theta, MSE1, MSE2):
+    from scipy.interpolate import splrep, BSpline
+
+    x,y = moving_average(theta,MSE1, 7)
+    x_control,y_control=moving_average(THETA, MSE2,7)
+    R = (1 - (y/y_control))*100
+    tck_s = splrep(x, R, s=len(x))
+    R=BSpline(*tck_s)(theta)
+    
+    return R
+
+
 def parser():
     import argparse
     
     parser = argparse.ArgumentParser()
-    parser.add_argument('-d','--decoder',type=str,required=False,choice=['bayesian','MAP'],default='bayesian')
-    parser.add_argument('-c','--case',type=int,required=False,default=1,help="System Configuration")
+    parser.add_argument('-d','--decoder',type=str,required=False,choices=['bayesian','MAP'],default='bayesian')
+    parser.add_argument('--case','-c',type=int,required=False,default=1,help="System Configuration")
     parser.add_argument('-N','--n_trials',type=int,required=False,default=1000,help="Numerosity of the sampling")
     return parser.parse_args()
 
@@ -107,7 +119,6 @@ if __name__ == '__main__':
     from plot_tools import  *
     from cases import CASES
     import os
-    from scipy.interpolate import splrep, BSpline
     
     # Parse Arguments
     args = parser()
@@ -176,13 +187,9 @@ if __name__ == '__main__':
     system = NeuralSystem( CASES[CASE], N_trial=N_trial)
     
     # Plot Improvement
-    x,y = moving_average(THETA, R, 7)
-    x_control,y_control=moving_average(THETA, MSE_control,7)
-    R = (1 - (y/y_control))*100
-    tck_s = splrep(x, R, s=len(x))
-    R=BSpline(*tck_s)(THETA)
-    plot_improvement(THETA, R, outdir = outdir)    
-    
+    R = get_filtered_R(THETA, MSE, control_MSE)
+    plot_improvement(theta, R, outdir = outdir)    
+
     # Plot MSE along Signal Manifold    
     plot_simulation( system, [], E = R, outdir = outdir)
     
