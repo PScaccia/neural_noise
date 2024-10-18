@@ -8,7 +8,7 @@ Created on Thu Oct  3 13:10:10 2024
 
 import matplotlib.pyplot as plt
 import numpy as np
-from network import NeuralSystem, generate_tuning_curve, generate_variance_matrix, THETA
+from network import NeuralSystem, generate_tuning_curve, THETA
 import matplotlib.collections as mcoll
 
 
@@ -24,7 +24,8 @@ def make_segments(x, y):
     return segments
 
 
-def plot_simulation( system, stimolus, plot_gradient = False, E = None, outdir = None):
+def plot_simulation( system, stimolus, plot_gradient = False, E = None, 
+                    outdir = None, color_label = ''):
     
     markers = ['o','+','s','^','*','v']
         
@@ -54,8 +55,12 @@ def plot_simulation( system, stimolus, plot_gradient = False, E = None, outdir =
     
     if E is not None:
         cmap='jet'
-        Emin = 0
-        Emax = np.percentile(E,90)
+        # Emin = E.min()
+        # Emax = np.percentile(E,90)
+
+        Emin = -10
+        Emax = 10
+        
         norm=plt.Normalize(Emin, Emax)
         #c = plt.cm.jet( (E - Emin)/(Emax - Emin) )
         segments = make_segments(mu1, mu2)
@@ -64,7 +69,7 @@ def plot_simulation( system, stimolus, plot_gradient = False, E = None, outdir =
 
         axs[0].add_collection(lc)
         cm = fig.colorbar(lc,ax=axs[0])
-        cm.set_label('MSE',size = 15)
+        cm.set_label(color_label, size = 10, weight = 'bold')
 
         """
         for i,mu1,mu2 in zip( range(theta.size), mu1, list( map( system.mu[1], theta)) ):
@@ -86,10 +91,11 @@ def plot_simulation( system, stimolus, plot_gradient = False, E = None, outdir =
     axs[0].set_ylim(min(mu2) - 2*s, max(mu2) + 2*s)
     axs[0].set_xlabel('Response 1', weight='bold',size=18)
     axs[0].set_ylabel('Response 2', weight='bold',size=18)
-    axs[0].legend( title = r'Theta')
+    
+    if len(stimolus) > 0:  axs[0].legend( title = r'Theta')
     axs[0].set_title(f"N: {system.N_trial}",size=12)
     plot_tuning_curves(*system.mu, ax = axs[1])
-    
+            
     if outdir is not None:
         plt.savefig(outdir + '/simulation.png',bbox_inches='tight',dpi=300)
         print("Simulation plot saved in ",outdir + "/simulation.png")
@@ -113,7 +119,8 @@ def plot_tuning_curves(mu1, mu2, ax = None):
         ax.set_ylabel("Activity",size=15,weight='bold')
     return
 
-def plot_theta_error(theta, theta_sampling, MSE , title = ' ', outdir = None, FI = None):
+def plot_theta_error(theta, theta_sampling, MSE , title = ' ', 
+                     outdir = None, FI = None, filename = 'MSE.png'):
     
     fig, axs = plt.subplots(2,1,figsize = (10,10))
     axs[0].plot(theta, MSE, c='blue', label = 'Decoding Error',marker='o',ms=3)
@@ -134,8 +141,9 @@ def plot_theta_error(theta, theta_sampling, MSE , title = ' ', outdir = None, FI
     
     axs[1].set_title(title)
     if outdir is not None:
-        plt.savefig(outdir + '/MSE.png',bbox_inches='tight',dpi=300)
-        print("MSE plot saved in in ",outdir+"/MSE.png")
+        plt.savefig(outdir + f'/{filename}',bbox_inches='tight',dpi=300)
+        print("MSE plot saved in in ",outdir+f"/{filename}")
+        plt.clf()
     else:
         plt.show()
     
@@ -157,36 +165,78 @@ def plot_theta_ext_prob(theta, theta_sampling, outdir = './'):
     
     return
 
-def plot_gradient_space(system):
+def plot_gradient_space(system, outfile = None):
+    
+        
+    def draw_oriented_ellipse(cov_matrix, center, ax):
+    
+        eigenvalues, eigenvectors = np.linalg.eig(cov_matrix)
+        width, height = 2*np.sqrt(eigenvalues)  # Doppio per coprire il 95% dei dati
+        angle = np.arctan2(eigenvectors[1, 0], eigenvectors[0, 0]) * (180 / np.pi)
+    
+        ell = plt.matplotlib.patches.Ellipse(center, width, height, angle=angle, color='blue', alpha=0.5)
+        ax.add_patch(ell)
+        return width/2, height/2, np.deg2rad(angle)
     
     fig,ax = plt.subplots(figsize=(10,10))
-    evals, evect = np.linalg.eig(system.sigma)
-    angle = np.arctan2(evect[1,0], evect[0,0])*180/np.pi
+    s = np.sqrt(system.V)
+
+    a,b, alpha = draw_oriented_ellipse(system.sigma,[0,0], ax)
+    # alpha += np.pi/2
+    plt.plot(s*np.cos(THETA),s*np.sin(THETA),ls='--',c='grey')
+
+    mu_grad1 = system.grad[0](THETA)
+    mu_grad2 = system.grad[1](THETA)
+
+    xmax = max(2*s, mu_grad1.max())
+    ymax = max(2*s, mu_grad2.max())
+    xmin = min(-2*s, mu_grad1.min())
+    ymin = min(-2*s, mu_grad2.min())
+
+    line = np.linspace(-xmax*2,xmax*2,1000)
     
-    width, height = np.sqrt(evals)
+    angles = system.compute_beneficial_angles()
+    for i,phi in enumerate(angles):
+        y = np.tan(phi)*line
+        plt.plot(line, y,c='grey',lw = 1)
+        
+        if i > 0:
+            color = ['green','red'][i%2]
+            plt.fill_between(line, np.tan(angles[i-1])*line,y,color=color,alpha=0.05 )
+           
     
-    plt.plot(system.grad[0](THETA), system.grad[1](THETA), c= 'black')
-    plt.plot(system.V*np.cos(THETA), system.V*np.sin(THETA),ls='--',c='grey')
-    ell = plt.matplotlib.patches.Ellipse([0,0], width, height)
-    ax.add_patch(ell)
-    plt.show()
+    plt.plot( mu_grad1, mu_grad2, c='black' )
+    
+    
+    plt.xlim(xmin,xmax)
+    plt.ylim(ymin, ymax)
+    plt.xlabel(r"$\mathbf{\mu}'_{1}(\theta)$",size = 15)
+    plt.ylabel(r"$\mathbf{\mu}'_{2}(\theta)$",size = 15)
+
+    if outfile is None:
+        plt.show()
+    else:
+        plt.savefig(outfile, bbox_inches = 'tight', dpi=300)
+        print("Saved plot of gradients' space in ",outfile)
     
     return
-def run_simulation( peak_shift = 0.3, A = 1, width = 1, flatness = 1, function = 'vm', V = 1e-2, rho = 0.7):
+
+def plot_improvement(theta, R, angles = None, outdir = None):
+    plt.plot(theta, R, c = 'black')
     
-    # System params
-    first_peak = 2.1
-    mu1 = generate_tuning_curve( function = function, width=width, center = first_peak, A = A)    
-    mu2 = generate_tuning_curve( function = function, width=width, center = first_peak + peak_shift, A = A )
-    sigma = generate_variance_matrix(V, rho )
+    if angles is not None:
+        for angle in angles:
+            plt.axvline(angle, ls ='--', c='red')
+    plt.xlabel(r'$\mathbf{\theta}$', size = 15)
+    plt.ylabel('Decoding Improvement [%]', size = 15,weight='bold')
     
-    plot_tuning_curves(mu1, mu2)
+    plt.axhline(0,lw=0.5,c='grey')
     
-    # Define Neural Network
-    system = NeuralSystem([mu1, mu2], sigma, N_trial = 1e4)
-    
-    # Plot Simulation
-    stimuli = np.pi*np.array( [0, 1/3, 0.5, 2/3, 0.8,1,1.2,1+1/3,1.6666])
-    plot_simulation(system, stimuli)
-    
-    return system
+    if outdir is not None:
+        plt.savefig(outdir+'/improvement.png')
+        print(f"Saved Deciding Improvement in {outdir}/{'improvement.png'}")
+        plt.clf()
+    else:
+        plt.show()
+    return
+

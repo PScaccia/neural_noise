@@ -10,9 +10,15 @@ import numpy as np
 import sys
 from network import NeuralSystem, THETA
 
-def moving_average(x,w):
-    return np.convolve(x, np.ones(w), 'valid') / w
-
+def moving_average(x,y,w):
+    if w == 1:
+        return x,y
+    n = w//2
+    if w%2 == 0:
+        return 0.5*(x[n-1:len(x)-n] + x[n:len(x)-(n-1)]), np.convolve(y, np.ones(w), 'valid') / w
+    else:
+        return x[n:-n], np.convolve(y, np.ones(w), 'valid') / w
+        
 
 def bayesian_decoder(system, r):
     from scipy.optimize import minimize_scalar
@@ -78,70 +84,99 @@ def compute_MSE(theta_sampling):
     error = np.array([  1 - np.cos(t - theta_sampling[i,:] )  for i,t in enumerate(THETA) ])
     return np.mean( error, axis = 1)
     
-if __name__ == '__main__':
-    from plot_tools import plot_simulation, plot_theta_error, plot_theta_ext_prob
-    from network import generate_tuning_curve_from_fit
-    from cases import *
-    import os
-    # import argparse
+def save_sampling(system, theta_sampling, case, outfile):
+    with open(outfile,"w") as ofile:
+        for k,v in case.items():
+            print(f"# {k} : {v}", file = ofile)
+        print(f"# DECODER {DECODER}", file = ofile)
+        np.savetxt(ofile, theta_sampling)
+        print("Saved theta sampling in ", outfile)
+    
+    return
 
+if __name__ == '__main__':
+    from plot_tools import  *
+    from cases import CASES
+    import os
+    from scipy.interpolate import splrep, BSpline
+    
+    # import argparse
     # parser = argparse.ArgumentParser()
     
-    outdir = '/home/paolos/Pictures/decoding/case1/'
+    # Init Simulation
     save_theta_sampling = True
     DECODER = 'bayesian'
-    CASE    = CASE_1
-
-    print()    
-    print("CASE:     1")    
-    print("DECODER: ", DECODER)
-    print()    
-
+    CASE    = 1
+    outdir = f'/home/paolos/Pictures/decoding/case{CASE}/'
+    N_trial = 1000
+    sampling_file         = outdir + f'/theta_sampling_case{CASE}.txt'
+    control_sampling_file = sampling_file.replace('.txt','_control.txt')
     
-    # parser.add_argument('-c','--case',type=str,required=True, choices = ['case1', 'case2', 'case3', 'case4'],
-    #                     help="Simulation's scenario")
-    # parser.add_argument('-o','--outdir',type=str,required=False,default="./")    
-    # args = parser.parse_args()
-    
-    # data = np.load('/home/paolos/data/quad_fits.npz')    
-    # fit = data['quad_ftvm_fits'][:]
+    print()    
+    print("CASE:     ",CASE)    
+    print("DECODER:  ", DECODER)
+    print("OUTDIR:   ",outdir)
+    print("N TRIALS: ",N_trial)
+    print()    
+
+    if not os.path.isdir(outdir):
+        os.system(f"mkdir -p {outdir}")
     
     # Define plot
     stimuli = np.array( [ np.pi ])
-    #    stimuli = np.pi*np.array( [0, 1/3, 0.5, 2/3, 0.8,1,1.2,1+1/3,1.6666])
 
     # Define Neural System
-    system = NeuralSystem( CASE, N_trial=500)
-    # system.mu = [ generate_tuning_curve_from_fit(fit[1] - data['quad_ftvm_fit_parameters'][1,-2]),
-    #               generate_tuning_curve_from_fit(fit[2]*( 55.62/73.80) - data['quad_ftvm_fit_parameters'][2,-2])  ]
-    # del(data, fit)
+    system = NeuralSystem( CASES[CASE], N_trial=N_trial)
     
-    # Compute Decoder MSE
+    # Compute Decoder MSE (Correlated system)
     theta_sampling = sample_theta_ext( system, THETA, decoder = DECODER )
-    if save_theta_sampling:
-        theta_outfile = './theta_sampling.txt'
-        with open(theta_outfile,"w") as ofile:
-            for k,v in CASE.items():
-                print(f"# {k} : {v}", file = ofile)
-            print(f"# DECODER {DECODER}", file = ofile)
-            np.savetxt(ofile, theta_sampling)
-            print("Saved theta sampling in ", theta_outfile)
+    if save_theta_sampling: save_sampling(system, theta_sampling,  CASES[CASE], outdir + f'/theta_sampling_case{CASE}.txt')
+    MSE = compute_MSE(theta_sampling)
+    FI  = np.array(list(map(system.linear_fisher, THETA)))
     
-    error = np.array([  1 - np.cos(t - theta_sampling[i,:] )  for i,t in enumerate(THETA) ])
-
-    MSE = np.mean( error, axis = 1)
-    FI=np.array(list(map(system.linear_fisher, THETA)))
-    
-    # Plot MSE along Signal Manifold    
-    plot_simulation( system, stimuli, E = MSE, outdir = outdir)
-    
-    # Plot Decoder Error Analysis
+    # Plot Decoder Error Analysis (Correlated system)
     plot_theta_error(THETA, theta_sampling, MSE, FI = FI, title = f'N: {system.N_trial}', outdir = outdir)
     
     # Plot Histograms
-    plot_theta_ext_prob(THETA, theta_sampling, outdir = outdir)
-    os.system(f"convert -delay 5 -loop 0 {outdir}/prob_*.png {outdir}/decoding_prob.gif")
-    os.system(f"rm {outdir}/prob_*.png")
-    print(f"Created animation in {outdir}/decoding_prob.gif")
+    # plot_theta_ext_prob(THETA, theta_sampling, outdir = outdir)
+    # os.system(f"convert -delay 5 -loop 0 {outdir}/prob_*.png {outdir}/decoding_prob.gif")
+    # os.system(f"rm {outdir}/prob_*.png")
+    # print(f"Created animation in {outdir}/decoding_prob.gif")
 
-            
+    # Simulate decorrelated system
+    if os.path.isfile(control_sampling_file):
+        control_theta_sampling = np.loadtxt( control_sampling_file )
+    else:
+        system.rho = 0.0
+        system.generate_variance_matrix()
+        print()
+        print("Simulating Indipendent System")
+        
+        control_theta_sampling = sample_theta_ext( system, THETA, decoder = DECODER )
+        if save_theta_sampling: save_sampling(system, control_theta_sampling,  CASES[CASE], control_sampling_file)
+
+    # Compute Decoder MSE (Indipendent system)        
+    control_MSE = compute_MSE(control_theta_sampling)
+    control_FI=np.array(list(map(system.linear_fisher, THETA)))
+    
+    # Plot Decoder Error Analysis (Indipendent system)
+    plot_theta_error(THETA, control_theta_sampling, control_MSE, FI = control_FI,
+                     title = f'N: {system.N_trial}', outdir = outdir, filename = 'control_MSE.png')
+
+    # Reload system params
+    system = NeuralSystem( CASES[CASE], N_trial=N_trial)
+    
+    # Plot Improvement
+    x,y = moving_average(THETA, R, 7)
+    x_control,y_control=moving_average(THETA, MSE_control,7)
+    R = (1 - (y/y_control))*100
+    tck_s = splrep(x, R, s=len(x))
+    R=BSpline(*tck_s)(THETA)
+    plot_improvement(THETA, R, outdir = outdir)    
+    
+    # Plot MSE along Signal Manifold    
+    plot_simulation( system, [], E = R, outdir = outdir)
+    
+    # Plot Gradient Space
+    plot_gradient_space(system, outfile = outdir +'/gradient_space.png')
+    

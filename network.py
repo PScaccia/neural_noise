@@ -69,11 +69,6 @@ def compute_grad( function = 'vm',
     
     return 
 
-def generate_variance_matrix( V, rho, D = 2):
-    if D != 2:
-        sys.exit("Not implemented yet!")
-    
-    return V*np.array( [[1, rho], [rho, 1]])
 
 class NeuralSystem(object):
     
@@ -108,7 +103,8 @@ class NeuralSystem(object):
                                           flatness = self.flatness) ]
         
         # Define Covariance Matrix
-        self.sigma = generate_variance_matrix(self.V, self.rho)
+        self.generate_variance_matrix()
+        
         self.inv_sigma = np.linalg.inv( self.sigma )
         
         # Define Linear Fisher
@@ -122,6 +118,38 @@ class NeuralSystem(object):
     def grad_vector(self, x):
         return np.array([self.grad[0](x), self.grad[1](x)])
     
+    def generate_variance_matrix(self, D = 2):
+        if D != 2:
+            sys.exit("Not implemented yet!")
+        
+        self.sigma = self.V*np.array( [[1, self.rho], [self.rho, 1]])
+    
+    def compute_beneficial_angles(self):
+        
+        eigenvalues, eigenvectors = np.linalg.eig(self.sigma)
+        width, height = 2*np.sqrt(eigenvalues)  # Doppio per coprire il 95% dei dati
+        angle = np.arctan2(eigenvectors[1, 0], eigenvectors[0, 0]) 
+        a,b = width/2, height/2
+        X = np.sqrt(  (self.V - b*b) / (1 - (b/a)**2) )
+        Y = b*np.sqrt(1-(X/a)**2)
+        rot_matrix = np.array([[np.cos(angle),-np.sin(angle)],[np.sin(angle),np.cos(angle)]])
+
+        xint1,xint2   = X, -X
+        yint1 , yint2 = Y, -Y
+        
+        points = np.array([ [ xint1, yint1 ],
+                            [ xint1, yint2],
+                            [ xint2, yint1],
+                            [ xint2, yint2]
+                           ]).transpose()
+        points = rot_matrix.dot(points)
+        points = points.transpose()
+
+        angles = np.array(  [ np.arctan2(*p) for p in points ])
+        #angles[angles < 0] = np.pi/2 - angles[angles < 0]
+        
+        return angles
+
      
 if __name__ == '__main__':
     from plot_tools import plot_simulation
