@@ -27,9 +27,13 @@ def bayesian_decoder(system, r):
     N_step = 200
     theta_support = np.linspace(THETA[0], THETA[-1],N_step)
     dtheta = (THETA[-1] - THETA[0])/N_step    
-    sqrt_det = np.sqrt( np.linalg.det(system.sigma))
+    
+    if not callable(system.rho):
+        sqrt_det = np.sqrt( np.linalg.det(system.sigma(3)))
+        InvSigma = system.inv_sigma(3)
+    else:
+        sys.exit("Not implemented yet!")
 
-    InvSigma = system.inv_sigma
     mu_vect          = lambda x :  np.array([system.mu[0](x),system.mu[1](x)]) 
     cost_function    = lambda x : (  r - mu_vect(x) ).transpose().dot( InvSigma ).dot( r - mu_vect(x) )    
     P_post           = lambda x : np.exp(-0.5*cost_function(x))
@@ -149,8 +153,13 @@ if __name__ == '__main__':
     system = NeuralSystem( CASES[CASE], N_trial=N_trial)
     
     # Compute Decoder MSE (Correlated system)
-    theta_sampling = sample_theta_ext( system, THETA, decoder = DECODER )
-    if save_theta_sampling: save_sampling(system, theta_sampling,  CASES[CASE], outdir + f'/theta_sampling_case{CASE}.txt')
+    if os.path.isfile(sampling_file):
+        theta_sampling = np.loadtxt( sampling_file )
+        print("Loaded theta sampling from ",sampling_file)
+    else:
+        theta_sampling = sample_theta_ext( system, THETA, decoder = DECODER )
+        if save_theta_sampling: save_sampling(system, theta_sampling,  CASES[CASE], outdir + f'/theta_sampling_case{CASE}.txt')
+        
     MSE = compute_MSE(theta_sampling)
     FI  = np.array(list(map(system.linear_fisher, THETA)))
     
@@ -166,6 +175,7 @@ if __name__ == '__main__':
     # Simulate decorrelated system
     if os.path.isfile(control_sampling_file):
         control_theta_sampling = np.loadtxt( control_sampling_file )
+        print("Loaded control theta sampling from ",control_sampling_file)
     else:
         system.rho = 0.0
         system.generate_variance_matrix()
@@ -188,10 +198,10 @@ if __name__ == '__main__':
     
     # Plot Improvement
     R = get_filtered_R(THETA, MSE, control_MSE)
-    plot_improvement(theta, R, outdir = outdir)    
+    plot_improvement(THETA, R, outdir = outdir, raw_MSE1=MSE, raw_MSE2=control_MSE)
 
     # Plot MSE along Signal Manifold    
-    plot_simulation( system, [], E = R, outdir = outdir)
+    plot_simulation( system, [], E = R, outdir = outdir, color_label = 'Improvement [%]')
     
     # Plot Gradient Space
     plot_gradient_space(system, outfile = outdir +'/gradient_space.png')

@@ -101,17 +101,24 @@ class NeuralSystem(object):
                                           center = self.center + self.center_shift,
                                           A = self.A, function = self.function,
                                           flatness = self.flatness) ]
-        
+
+        if self.rho == 'adaptive':
+            self.update_rho()
+            
         # Define Covariance Matrix
         self.generate_variance_matrix()
         
-        self.inv_sigma = np.linalg.inv( self.sigma )
-        
+        if not callable(self.rho):
+            self.inv_sigma = lambda x : np.linalg.inv( self.sigma(x) )
+        else:
+            self.det = lambda x : (self.beta**2)*self.mu[0](x)*self.mu[1](x) - (self.rho(x))**2
+            self.inv_sigma = lambda x : (1/self.det(x))*np.array( [[ self.beta*self.mu[1](x), -self.rho(x) ], 
+                                                                   [-self.rho(x),self.beta*self.mu[0](x) ]])
         # Define Linear Fisher
-        self.linear_fisher = lambda x: self.grad_vector(x).transpose().dot(self.inv_sigma).dot(self.grad_vector(x))
+        self.linear_fisher = lambda x: self.grad_vector(x).transpose().dot(self.inv_sigma(x)).dot(self.grad_vector(x))
         
         # Define neurons
-        self.neurons    = lambda x: neural_dynamics(x, self.mu, self.sigma, self.N_trial)
+        self.neurons    = lambda x: neural_dynamics(x, self.mu, self.sigma(x), self.N_trial)
 
         return
     
@@ -122,8 +129,18 @@ class NeuralSystem(object):
         if D != 2:
             sys.exit("Not implemented yet!")
         
-        self.sigma = self.V*np.array( [[1, self.rho], [self.rho, 1]])
+        if callable(self.rho):
+            V = lambda x : np.array( [[np.sqrt(self.beta*self.mu[0](x)), 0], 
+                                      [0, np.sqrt(self.beta*self.mu[1](x))]])
+            self.sigma = lambda x : V(x).dot(np.array( [[1, self.rho(x)], 
+                                                        [self.rho(x), 1]])).dot(V(x))
+        else:
+            self.sigma = lambda x : self.V*np.array( [[1, self.rho], [self.rho, 1]])
+        return            
     
+    def update_rho(self):
+        self.rho = lambda x: self.alpha/(self.beta*np.sqrt( self.mu[0](x)*self.mu[1](x))) - 1.0
+        
     def compute_beneficial_angles(self):
         
         eigenvalues, eigenvectors = np.linalg.eig(self.sigma)

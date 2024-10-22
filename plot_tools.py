@@ -54,18 +54,17 @@ def plot_simulation( system, stimolus, plot_gradient = False, E = None,
     mu2 = list( map( system.mu[1], THETA))
     
     if E is not None:
-        cmap='jet'
+        cmap='coolwarm'
         # Emin = E.min()
         # Emax = np.percentile(E,90)
 
         Emin = -10
-        Emax = 10
+        Emax =  10
         
         norm=plt.Normalize(Emin, Emax)
-        #c = plt.cm.jet( (E - Emin)/(Emax - Emin) )
         segments = make_segments(mu1, mu2)
         lc = mcoll.LineCollection(segments, array=E, cmap=cmap , norm=norm,
-                                  linewidth=2, alpha=1)
+                                  linewidth=5, alpha=1)
 
         axs[0].add_collection(lc)
         cm = fig.colorbar(lc,ax=axs[0])
@@ -87,8 +86,19 @@ def plot_simulation( system, stimolus, plot_gradient = False, E = None,
                      lw = 1 )
     
     s = np.sqrt(system.V)
-    axs[0].set_xlim(min(mu1) - 2*s, max(mu1) + 2*s)
-    axs[0].set_ylim(min(mu2) - 2*s, max(mu2) + 2*s)
+    if len(stimolus) > 0:
+        xmax = max(2*s,  max(mu1))
+        ymax = max(2*s,  max(mu2))
+        xmin = min(-2*s, min(mu1))
+        ymin = min(-2*s, min(mu2))
+    else:
+        xmax = max(mu1) + 5
+        xmin = min(mu1) - 5
+        ymax = max(mu2) + 5
+        ymin = min(mu2) - 5
+    
+    axs[0].set_xlim(xmin, xmax)
+    axs[0].set_ylim(ymin, ymax)
     axs[0].set_xlabel('Response 1', weight='bold',size=18)
     axs[0].set_ylabel('Response 2', weight='bold',size=18)
     
@@ -221,17 +231,22 @@ def plot_gradient_space(system, outfile = None):
     
     return
 
-def plot_improvement(theta, R, angles = None, outdir = None):
-    plt.plot(theta, R, c = 'black')
+def plot_improvement(theta, R, angles = None, outdir = None, raw_MSE1 = None, raw_MSE2 = None):
+    plt.plot(theta, R, c = 'black', label='Smoothed')
     
     if angles is not None:
         for angle in angles:
             plt.axvline(angle, ls ='--', c='red')
-    plt.xlabel(r'$\mathbf{\theta}$', size = 15)
+    plt.xlabel(r'$\mathbf{\theta}$ [rad]', size = 15,weight = 'bold')
     plt.ylabel('Decoding Improvement [%]', size = 15,weight='bold')
     
     plt.axhline(0,lw=0.5,c='grey')
     
+    if raw_MSE1 is not None and raw_MSE2 is not None:
+        raw_R = (1 - raw_MSE1/raw_MSE2)*100
+        plt.plot(theta, raw_R,label='Unfiltered',lw = 0.4,zorder = 1,c='red')
+        plt.legend()
+        
     if outdir is not None:
         plt.savefig(outdir+'/improvement.png')
         print(f"Saved Deciding Improvement in {outdir}/{'improvement.png'}")
