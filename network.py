@@ -139,11 +139,11 @@ class NeuralSystem(object):
         return            
     
     def update_rho(self):
-        self.rho = lambda x: self.alpha/(self.beta*np.sqrt( self.mu[0](x)*self.mu[1](x))) - 1.0
+        self.rho = lambda x:  1.0 - (self.alpha/(self.beta*np.sqrt( self.mu[0](x)*self.mu[1](x)))) 
         
-    def compute_beneficial_angles(self):
+    def compute_beneficial_angles(self, theta):
         
-        eigenvalues, eigenvectors = np.linalg.eig(self.sigma)
+        eigenvalues, eigenvectors = np.linalg.eig(self.sigma(theta))
         width, height = 2*np.sqrt(eigenvalues)  # Doppio per coprire il 95% dei dati
         angle = np.arctan2(eigenvectors[1, 0], eigenvectors[0, 0]) 
         a,b = width/2, height/2

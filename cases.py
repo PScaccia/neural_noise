@@ -50,7 +50,7 @@ CASE_4 = {  'A'              : 4.185765887215448e-09,  # based on Carlo's fit
             'b'              : 7.205646924554782,      # base on Carlo's fit
             'center_shift'   : np.pi/4,
             'V'              : 25,
-            'rho'            : 0.5 }
+            'rho'            : 0.92 }
 
 ####################################################################################
 #                 STIM. DEPENDENT NOISE                                            #
@@ -65,7 +65,7 @@ CASE_A1 = {  'A'              : 4.185765887215448e-09,  # based on Carlo's fit
             'center_shift'   : np.pi/4,
             'V'              : 2500,
             'rho'            : "adaptive",
-            'alpha'          : 10,
+            'alpha'          : 6.485082232099304,
             'beta'           : 1   }
     
 CASE_A2 = {  'A'              : 4.185765887215448e-09,  # based on Carlo's fit

@@ -58,8 +58,8 @@ def plot_simulation( system, stimolus, plot_gradient = False, E = None,
         # Emin = E.min()
         # Emax = np.percentile(E,90)
 
-        Emin = -10
-        Emax =  10
+        Emin = -5
+        Emax =  5
         
         norm=plt.Normalize(Emin, Emax)
         segments = make_segments(mu1, mu2)
@@ -83,7 +83,7 @@ def plot_simulation( system, stimolus, plot_gradient = False, E = None,
         axs[0].plot( list( map( system.mu[0], THETA)), 
                      list( map( system.mu[1], THETA)), 
                      color = 'black',
-                     lw = 1 )
+                     lw = 3 )
     
     s = np.sqrt(system.V)
     if len(stimolus) > 0:
@@ -103,7 +103,7 @@ def plot_simulation( system, stimolus, plot_gradient = False, E = None,
     axs[0].set_ylabel('Response 2', weight='bold',size=18)
     
     if len(stimolus) > 0:  axs[0].legend( title = r'Theta')
-    axs[0].set_title(f"N: {system.N_trial}",size=12)
+    axs[0].set_title(r"$N_{sampling}$" + f": {system.N_trial}",size=12)
     plot_tuning_curves(*system.mu, ax = axs[1])
             
     if outdir is not None:
@@ -135,7 +135,7 @@ def plot_theta_error(theta, theta_sampling, MSE , title = ' ',
     fig, axs = plt.subplots(2,1,figsize = (10,10))
     axs[0].plot(theta, MSE, c='blue', label = 'Decoding Error',marker='o',ms=3)
     axs[0].set_xlabel(r'$\mathbf{\theta}$',size = 15)    
-    axs[0].set_ylabel( "MSE", weight = 'bold', size = 15)    
+    axs[0].set_ylabel( "Error", weight = 'bold', size = 15)    
     axs[0].set_title(title)
     axs[0].legend(loc='upper left')
     if FI is not None:
@@ -189,9 +189,13 @@ def plot_gradient_space(system, outfile = None):
         return width/2, height/2, np.deg2rad(angle)
     
     fig,ax = plt.subplots(figsize=(10,10))
+    if callable(system.rho):
+        print("Skipped gradient space plot for noise dependent correlations.")
+        return
+    
     s = np.sqrt(system.V)
 
-    a,b, alpha = draw_oriented_ellipse(system.sigma,[0,0], ax)
+    a,b, alpha = draw_oriented_ellipse(system.sigma(0),[0,0], ax)
     # alpha += np.pi/2
     plt.plot(s*np.cos(THETA),s*np.sin(THETA),ls='--',c='grey')
 
@@ -205,23 +209,25 @@ def plot_gradient_space(system, outfile = None):
 
     line = np.linspace(-xmax*2,xmax*2,1000)
     
-    angles = system.compute_beneficial_angles()
+    angles = system.compute_beneficial_angles(3)
     for i,phi in enumerate(angles):
         y = np.tan(phi)*line
         plt.plot(line, y,c='grey',lw = 1)
         
-        if i > 0:
+        if i == 1:
             color = ['green','red'][i%2]
-            plt.fill_between(line, np.tan(angles[i-1])*line,y,color=color,alpha=0.05 )
+            plt.fill_between(line, np.tan(angles[i-1])*line,y,color=color,alpha=0.05, label = 'Detrimental' )
            
     
-    plt.plot( mu_grad1, mu_grad2, c='black' )
+    plt.plot( mu_grad1, mu_grad2, c='black', label = "Signal Manifold")
     
     
     plt.xlim(xmin,xmax)
     plt.ylim(ymin, ymax)
-    plt.xlabel(r"$\mathbf{\mu}'_{1}(\theta)$",size = 15)
-    plt.ylabel(r"$\mathbf{\mu}'_{2}(\theta)$",size = 15)
+    plt.xlabel(r"Derivative 1 $\mathbf{\mu}'_{1}(\theta)$",size = 15, weight = 'bold')
+    plt.ylabel(r"Derivative 2 $\mathbf{\mu}'_{2}(\theta)$",size = 15, weight = 'bold')
+
+    plt.legend(prop={'size' : 15})
 
     if outfile is None:
         plt.show()
@@ -245,7 +251,7 @@ def plot_improvement(theta, R, angles = None, outdir = None, raw_MSE1 = None, ra
     if raw_MSE1 is not None and raw_MSE2 is not None:
         raw_R = (1 - raw_MSE1/raw_MSE2)*100
         plt.plot(theta, raw_R,label='Unfiltered',lw = 0.4,zorder = 1,c='red')
-        plt.legend()
+        plt.legend(prop={'size':17})
         
     if outdir is not None:
         plt.savefig(outdir+'/improvement.png')

@@ -20,17 +20,17 @@ def moving_average(x,y,w):
         return x[n:-n], np.convolve(y, np.ones(w), 'valid') / w
         
 
-def bayesian_decoder(system, r):
+def bayesian_decoder(system, r, theta):
     from scipy.optimize import minimize_scalar
     
     # Define Integral Parameters
-    N_step = 200
+    N_step = 400
     theta_support = np.linspace(THETA[0], THETA[-1],N_step)
     dtheta = (THETA[-1] - THETA[0])/N_step    
     
     if not callable(system.rho):
-        sqrt_det = np.sqrt( np.linalg.det(system.sigma(3)))
-        InvSigma = system.inv_sigma(3)
+        sqrt_det = np.sqrt( np.linalg.det(system.sigma(theta)))
+        InvSigma = system.inv_sigma(theta)
     else:
         sys.exit("Not implemented yet!")
 
@@ -72,11 +72,10 @@ def sample_theta_ext(system, theta_array, decoder = 'bayesian'):
     theta_ext_sampling = np.empty( ( len(theta_array), system.N_trial ) )*np.nan
             
     for i,theta in zip(tqdm(range(len(theta_array)), desc = 'Computing decoding error: ' ), theta_array):
-    # for i, theta in enumerate(theta_array):
-        
+                    
         r_sampling = system.neurons(theta)
         if decoder == 'bayesian':
-            theta_ext_sampling[i,:] = [ bayesian_decoder(system, r) for r in r_sampling ]
+            theta_ext_sampling[i,:] = [ bayesian_decoder(system, r, theta) for r in r_sampling ]
         elif decoder == 'MAP':
             theta_ext_sampling[i,:] = [ MAP_decoder(system, r) for r in r_sampling ]
         else:
@@ -164,7 +163,7 @@ if __name__ == '__main__':
     FI  = np.array(list(map(system.linear_fisher, THETA)))
     
     # Plot Decoder Error Analysis (Correlated system)
-    plot_theta_error(THETA, theta_sampling, MSE, FI = FI, title = f'N: {system.N_trial}', outdir = outdir)
+    plot_theta_error(THETA, theta_sampling, MSE, FI = FI, title = r"$N_{sampling}$" + f': {system.N_trial} ' + r"$\rho_{N}: $" + f"{system.rho:.2}", outdir = outdir)
     
     # Plot Histograms
     # plot_theta_ext_prob(THETA, theta_sampling, outdir = outdir)
@@ -191,7 +190,7 @@ if __name__ == '__main__':
     
     # Plot Decoder Error Analysis (Indipendent system)
     plot_theta_error(THETA, control_theta_sampling, control_MSE, FI = control_FI,
-                     title = f'N: {system.N_trial}', outdir = outdir, filename = 'control_MSE.png')
+                     title = r"$N_{sampling}$" + f': {system.N_trial}', outdir = outdir, filename = 'control_MSE.png')
 
     # Reload system params
     system = NeuralSystem( CASES[CASE], N_trial=N_trial)
