@@ -24,7 +24,7 @@ def bayesian_decoder(system, r, theta):
     from scipy.optimize import minimize_scalar
     
     # Define Integral Parameters
-    N_step = 400
+    N_step = 360
     theta_support = np.linspace(THETA[0], THETA[-1],N_step)
     dtheta = (THETA[-1] - THETA[0])/N_step    
     
@@ -49,16 +49,17 @@ def bayesian_decoder(system, r, theta):
     sin *= norm_factor
     cos *= norm_factor
     
-    return np.arctan2(sin, cos)
-
+    extimate = np.arctan2(sin, cos)
+    
+    return extimate if extimate >= 0 else extimate + 2*np.pi
 
 def MAP_decoder(system, r):
     from scipy.optimize import minimize_scalar
         
     # Define cost function
-    InvSigma = system.inv_sigma
+    InvSigma = lambda x: system.inv_sigma(x)
     mu_vect       = lambda x :  np.array([system.mu[0](x), system.mu[1](x)]) 
-    cost_function = lambda x : (  r - mu_vect(x) ).transpose().dot( InvSigma ).dot( r - mu_vect(x) )
+    cost_function = lambda x : (  r - mu_vect(x) ).transpose().dot( InvSigma(x) ).dot( r - mu_vect(x) )
     
     points = list(map(cost_function, THETA))
     return THETA[np.argmin(points)]
@@ -205,3 +206,5 @@ if __name__ == '__main__':
     # Plot Gradient Space
     plot_gradient_space(system, outfile = outdir +'/gradient_space.png')
     
+    # Plot Decoding Accuracy (Heatmap)
+    plot_heatmap(theta_sampling, control_theta_sampling, nbins = 60, outfile = outdir + '/heatmap.png')

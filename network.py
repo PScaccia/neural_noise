@@ -8,8 +8,9 @@ Created on Thu Oct  3 10:09:15 2024
 import numpy as np
 import sys
 import progressbar
+from scipy.misc import derivative
 
-THETA = np.linspace(0, 2*np.pi, 360)
+THETA = np.linspace(0, 2*np.pi, 180)
 
 
 def generate_tuning_curve_from_fit(fit):    
@@ -52,17 +53,19 @@ def FTVM(th, a, th_0, s, baseline, g):           #indexed with 'ftvm'
     return (ftvm_f / np.sum(ftvm_f/a/(len(th)/36)) + baseline)*(1 + any(ftvm_f / np.sum(ftvm_f/a) + baseline < 0)*1e10)
 
 
-def compute_grad( function = 'vm', 
+def compute_grad( mu, function = 'vm', 
                   center = 2.8, A = 1, width = 0.2, flatness = 0.25, b = 0.1):
     
     if function == 'vm':
         sys.exit("Not implemented yet!")
     
     elif function in ['fvm','fvm_from_fit']:
-        f = generate_tuning_curve(A=A,width=width,flatness=flatness,b=b,center=center,function=function)
-        k = 1/width
-        ni = -abs(flatness)
-        return lambda x : -f(x)*k*np.sin( (x - center ) + ni*np.sin( (x - center) )  )*(1 + ni*np.cos((x - center)))
+        return lambda x : derivative(mu,x, dx=1e-3)
+        
+        # f = generate_tuning_curve(A=A,width=width,flatness=flatness,b=b,center=center,function=function)
+        # k = 1/width
+        # ni = -abs(flatness)
+        # return lambda x : -(A*np.exp( (  np.cos(( x - center - flatness*np.sin( x - center) )) )/width )  + b )*k*np.sin( (x - center ) + ni*np.sin( (x - center) )  )*(1 + ni*np.cos((x - center)))
     
     else:
         sys.exit("Unknown function")   
@@ -93,11 +96,11 @@ class NeuralSystem(object):
                                                   center = self.center + self.center_shift,
                                                   A = self.A, function = self.function,
                                                   flatness = self.flatness) ]
-        self.grad       = [ compute_grad( width  = self.width,
+        self.grad       = [ compute_grad( self.mu[0], width  = self.width,
                                           center = self.center,
                                           A = self.A, function = self.function,
                                           flatness = self.flatness),
-                            compute_grad( width  = self.width,
+                            compute_grad( self.mu[1], width  = self.width,
                                           center = self.center + self.center_shift,
                                           A = self.A, function = self.function,
                                           flatness = self.flatness) ]

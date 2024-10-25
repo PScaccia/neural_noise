@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from network import NeuralSystem, generate_tuning_curve, THETA
 import matplotlib.collections as mcoll
+import sys
 
 
 def make_segments(x, y):
@@ -38,7 +39,7 @@ def plot_simulation( system, stimolus, plot_gradient = False, E = None,
         axs[0].scatter(data[:,0],data[:,1],
                     alpha=0.5,
                     marker=markers[ j ],
-                    label = r"{:.3f}".format(  t ) 
+                    label = r"$\theta$ = {:.3f}".format(  t ) 
                     )
         
         if plot_gradient:
@@ -58,8 +59,8 @@ def plot_simulation( system, stimolus, plot_gradient = False, E = None,
         # Emin = E.min()
         # Emax = np.percentile(E,90)
 
-        Emin = -5
-        Emax =  5
+        Emin = -7
+        Emax =  7
         
         norm=plt.Normalize(Emin, Emax)
         segments = make_segments(mu1, mu2)
@@ -87,10 +88,11 @@ def plot_simulation( system, stimolus, plot_gradient = False, E = None,
     
     s = np.sqrt(system.V)
     if len(stimolus) > 0:
-        xmax = max(2*s,  max(mu1))
-        ymax = max(2*s,  max(mu2))
-        xmin = min(-2*s, min(mu1))
-        ymin = min(-2*s, min(mu2))
+        n_sigma = 2
+        xmax = max(n_sigma*s,  max(mu1))
+        ymax = max(n_sigma*s,  max(mu2))
+        xmin = min(0, min(mu1))
+        ymin = min(0, min(mu2))
     else:
         xmax = max(mu1) + 5
         xmin = min(mu1) - 5
@@ -102,7 +104,7 @@ def plot_simulation( system, stimolus, plot_gradient = False, E = None,
     axs[0].set_xlabel('Response 1', weight='bold',size=18)
     axs[0].set_ylabel('Response 2', weight='bold',size=18)
     
-    if len(stimolus) > 0:  axs[0].legend( title = r'Theta')
+    if len(stimolus) > 0:  axs[0].legend( title = r'Neural Response at')
     axs[0].set_title(r"$N_{sampling}$" + f": {system.N_trial}",size=12)
     plot_tuning_curves(*system.mu, ax = axs[1])
             
@@ -132,16 +134,23 @@ def plot_tuning_curves(mu1, mu2, ax = None):
 def plot_theta_error(theta, theta_sampling, MSE , title = ' ', 
                      outdir = None, FI = None, filename = 'MSE.png'):
     
+    ymin = 0.0
+    ymax = 0.1
+    #MSE.max() + 0.5
+    
     fig, axs = plt.subplots(2,1,figsize = (10,10))
-    axs[0].plot(theta, MSE, c='blue', label = 'Decoding Error',marker='o',ms=3)
+    axs[0].plot(theta, MSE, c='blue', label = 'Decoding\nError',marker='o',ms=3)
     axs[0].set_xlabel(r'$\mathbf{\theta}$',size = 15)    
     axs[0].set_ylabel( "Error", weight = 'bold', size = 15)    
     axs[0].set_title(title)
     axs[0].legend(loc='upper left')
     if FI is not None:
         ax_twin = axs[0].twinx()
-        ax_twin.plot(theta, 1/FI, label = 'Inv. Fisher Information',c='black')
+        ax_twin.plot(theta, 1/FI, label = 'Inverse\nFisher Information',c='black')
+        ax_twin.set_ylim(ymin, ymax)
+        ax_twin.set_ylabel('Cramér-Rao bound\n(Unbiased)',weight='bold', size = 15)
     plt.legend(loc = 'upper right')
+    axs[0].set_ylim(ymin, ymax)
     
     av_theta = theta_sampling.mean( axis = 1 )
     
@@ -150,6 +159,7 @@ def plot_theta_error(theta, theta_sampling, MSE , title = ' ',
     axs[1].set_ylabel(r"$\mathbf{ \theta - \langle \hat{\theta} } \rangle $", size = 15)
     
     axs[1].set_title(title)
+    
     if outdir is not None:
         plt.savefig(outdir + f'/{filename}',bbox_inches='tight',dpi=300)
         print("MSE plot saved in in ",outdir+f"/{filename}")
@@ -224,8 +234,8 @@ def plot_gradient_space(system, outfile = None):
     
     plt.xlim(xmin,xmax)
     plt.ylim(ymin, ymax)
-    plt.xlabel(r"Derivative 1 $\mathbf{\mu}'_{1}(\theta)$",size = 15, weight = 'bold')
-    plt.ylabel(r"Derivative 2 $\mathbf{\mu}'_{2}(\theta)$",size = 15, weight = 'bold')
+    plt.xlabel(r"Derivative 1 $\mathbf{\mu}'_{1}(\theta)$",size = 18, weight = 'bold')
+    plt.ylabel(r"Derivative 2 $\mathbf{\mu}'_{2}(\theta)$",size = 18, weight = 'bold')
 
     plt.legend(prop={'size' : 15})
 
@@ -249,8 +259,11 @@ def plot_improvement(theta, R, angles = None, outdir = None, raw_MSE1 = None, ra
     plt.axhline(0,lw=0.5,c='grey')
     
     if raw_MSE1 is not None and raw_MSE2 is not None:
-        raw_R = (1 - raw_MSE1/raw_MSE2)*100
-        plt.plot(theta, raw_R,label='Unfiltered',lw = 0.4,zorder = 1,c='red')
+        from decoder import moving_average
+        x,y = moving_average(theta, raw_MSE1, 7)
+        x_2,y_2 = moving_average(theta, raw_MSE2, 7)
+        raw_R = (1 - y/y_2)*100
+        plt.plot(x, raw_R,label='Unfiltered',lw = 0.4,zorder = 1,c='red')
         plt.legend(prop={'size':17})
         
     if outdir is not None:
@@ -261,3 +274,137 @@ def plot_improvement(theta, R, angles = None, outdir = None, raw_MSE1 = None, ra
         plt.show()
     return
 
+def draw_circle_and_arrows(delta_angle, outfile  = None):
+    
+    if delta_angle not in [0,90,180]:
+        sys.exit("Delta angle not in [0, 90, 180]")
+        
+    fig, ax = plt.subplots( figsize = (10,10))
+    plt.plot(np.cos(THETA), np.sin(THETA), lw = 2, c='black', zorder = 1, alpha = 0.9)
+    
+    # First Arrow
+    plt.arrow(0, 0, 0, 0.95, color = 'darkblue', label = 'Neuron 1', lw = 8, zorder = 13)
+    if delta_angle == 90:
+        plt.arrow(0, 0, 0.95, 0, color = 'tab:green', label = 'Neuron 2', lw = 8, zorder = 13)
+    else:
+        sys.exit("Not implemented yet!")
+    plt.xticks([])
+    plt.yticks([])
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['bottom'].set_visible(False)
+    ax.spines['left'].set_visible(False)
+    plt.legend()
+    
+    if outfile is None:
+        plt.show()
+    else:
+        plt.savefig(outfile, bbox_inches='tight', dpi = 300)
+        print("Saved picture in ",outfile)
+    
+    return
+
+def plot_heatmap(theta_sampling, theta_sampling_control, nbins = THETA.size , outfile = None, cmap = 'hot'):
+    plt.clf()
+    plt.figure()
+    plt.title("CORRELATED SYSTEM",size = 20)
+
+    VMAX = 80
+    
+    N = theta_sampling.shape[1]
+    bins = np.linspace(0,2*np.pi,nbins+1)
+
+    heatmap = np.zeros((nbins,nbins))
+    
+    for i,sample in enumerate(theta_sampling.transpose()):    
+        heatmap += np.histogram2d(THETA, sample, bins = bins)[0]
+    heatmap /= N
+    heatmap = heatmap.transpose()   
+    norm = heatmap.sum(axis=0)
+    for i,n in enumerate(norm):
+        heatmap[:,i] /= n
+            
+    plt.imshow(heatmap*100,cmap=cmap,vmin=0,vmax=VMAX,origin='lower')
+    cb=plt.colorbar()
+    cb.set_label(label = 'Bin Accuracy [%]', size = 13)
+    
+    nticks = 6
+    step = nbins//nticks
+
+    ticks = np.arange(nbins+1)[::step]-0.5
+    tick_labels = [ str(int(x))+'°' for x in (ticks+0.5)*360/nbins ]
+    plt.yticks(ticks,labels=tick_labels)
+    plt.xticks(ticks,labels=tick_labels)
+    plt.xlim(-0.5,nbins-0.5)
+
+    # plt.gca().invert_yaxis()
+    plt.ylim(-0.5,nbins-0.5)
+
+    plt.xlabel(r"Input Stimulus $\mathbf{\theta^{*}}$", weight = 'bold',size=15)
+    plt.ylabel(r'Decoded Stimulus $\mathbf{\hat{\theta}}$', weight = 'bold' , size =15)
+    
+    if outfile is None:
+        plt.show()
+    else:
+        plt.savefig(outfile,bbox_inches='tight',dpi=300)
+        print("Heatmap saved in ",outfile)
+
+
+    heatmap_control = np.zeros((nbins,nbins))
+    for i,sample in enumerate(theta_sampling_control.transpose()):    
+        heatmap_control += np.histogram2d(THETA, sample, bins = bins)[0]
+    heatmap_control /= N
+    heatmap_control = heatmap_control.transpose()   
+    norm = heatmap_control.sum(axis=0)
+    for i,n in enumerate(norm):
+        heatmap_control[:,i] /= n
+        
+        
+    # Plot Heatmap Control
+    plt.clf()
+    plt.figure()
+    plt.title("INDEPENDENT SYSTEM",size = 20)
+    plt.imshow(heatmap_control*100,cmap=cmap,vmin=0,vmax=VMAX,origin='lower')
+    cb=plt.colorbar()
+    cb.set_label(label = 'Bin Accuracy [%]', size = 13)
+    tick_labels = [ str(int(x))+'°' for x in (ticks+0.5)*360/nbins ]
+    plt.yticks(ticks,labels=tick_labels)
+    plt.xticks(ticks,labels=tick_labels)
+    plt.xlim(-0.5,nbins-0.5)
+    plt.ylim(-0.5,nbins-0.5)
+    plt.xlabel(r"Input Stimulus $\mathbf{\theta^{*}}$", weight = 'bold',size=15)
+    plt.ylabel(r'Decoded Stimulus $\mathbf{\hat{\theta}}$', weight = 'bold' , size =15)
+    if outfile is None:
+        plt.show()
+    else:
+        control_outfile = outfile.replace('.png','_control.png')
+        plt.savefig(control_outfile,bbox_inches='tight',dpi=300)
+        print("Control Heatmap saved in ",control_outfile)
+
+        
+    plt.clf()
+    plt.figure()
+    plt.yticks(ticks,labels=tick_labels)
+    plt.xticks(ticks,labels=tick_labels)
+    plt.xlim(-0.5,nbins-0.5)
+    IMP_MAX = 8
+    IMP_MIN = -IMP_MAX
+    # plt.gca().invert_yaxis()
+    plt.ylim(-0.5,nbins-0.5)
+    IMP = heatmap - heatmap_control
+    plt.imshow(IMP*100,cmap='seismic',vmin=IMP_MIN,vmax=IMP_MAX,origin='lower')
+    plt.xlabel(r"Input Stimulus $\mathbf{\theta^{*}}$", weight = 'bold',size=15)
+    plt.ylabel(r'Decoded Stimulus $\mathbf{\hat{\theta}}$', weight = 'bold' , size =15)
+    line = np.linspace(0,nbins+1,1000)
+    plt.plot(line,line,c='black')
+    cb=plt.colorbar()
+    cb.set_label(label = 'Accuracy Difference [%]', size = 13)
+    if outfile is None:
+        plt.show()
+    else:
+        imp_outfile = outfile.replace('.png','_diff.png')
+        plt.savefig(imp_outfile,bbox_inches='tight',dpi=300)
+        print("Difference heatmap saved in ",imp_outfile)
+
+    
+    return heatmap, IMP
