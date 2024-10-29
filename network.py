@@ -111,12 +111,13 @@ class NeuralSystem(object):
         # Define Covariance Matrix
         self.generate_variance_matrix()
         
-        if not callable(self.rho):
-            self.inv_sigma = lambda x : np.linalg.inv( self.sigma(x) )
-        else:
-            self.det = lambda x : (self.beta**2)*self.mu[0](x)*self.mu[1](x) - (self.rho(x))**2
-            self.inv_sigma = lambda x : (1/self.det(x))*np.array( [[ self.beta*self.mu[1](x), -self.rho(x) ], 
-                                                                   [-self.rho(x),self.beta*self.mu[0](x) ]])
+        # if not callable(self.rho):
+        #     self.inv_sigma = lambda x : np.linalg.inv( self.sigma(x) )
+        # else:
+        #     self.det = lambda x : (self.beta**2)*self.mu[0](x)*self.mu[1](x) - (self.rho(x))**2
+        #     self.inv_sigma = lambda x : (1/self.det(x))*np.array( [[ self.beta*self.mu[1](x), -self.rho(x) ], 
+        #                                                            [-self.rho(x),self.beta*self.mu[0](x) ]])
+
         # Define Linear Fisher
         self.linear_fisher = lambda x: self.grad_vector(x).transpose().dot(self.inv_sigma(x)).dot(self.grad_vector(x))
         
@@ -139,6 +140,8 @@ class NeuralSystem(object):
                                                         [self.rho(x), 1]])).dot(V(x))
         else:
             self.sigma = lambda x : self.V*np.array( [[1, self.rho], [self.rho, 1]])
+            
+        self.inv_sigma = lambda x : np.linalg.inv( self.sigma(x))
         return            
     
     def update_rho(self):

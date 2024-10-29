@@ -10,6 +10,8 @@ import numpy as np
 import sys
 from network import NeuralSystem, THETA
 
+HOMEDIR = "/Users/paoloscaccia/"
+
 def moving_average(x,y,w):
     if w == 1:
         return x,y
@@ -28,11 +30,8 @@ def bayesian_decoder(system, r, theta):
     theta_support = np.linspace(THETA[0], THETA[-1],N_step)
     dtheta = (THETA[-1] - THETA[0])/N_step    
     
-    if not callable(system.rho):
-        sqrt_det = np.sqrt( np.linalg.det(system.sigma(theta)))
-        InvSigma = system.inv_sigma(theta)
-    else:
-        sys.exit("Not implemented yet!")
+    sqrt_det = np.sqrt( np.linalg.det(system.sigma(theta)))
+    InvSigma = system.inv_sigma(theta)
 
     mu_vect          = lambda x :  np.array([system.mu[0](x),system.mu[1](x)]) 
     cost_function    = lambda x : (  r - mu_vect(x) ).transpose().dot( InvSigma ).dot( r - mu_vect(x) )    
@@ -74,6 +73,7 @@ def sample_theta_ext(system, theta_array, decoder = 'bayesian'):
             
     for i,theta in zip(tqdm(range(len(theta_array)), desc = 'Computing decoding error: ' ), theta_array):
                     
+        
         r_sampling = system.neurons(theta)
         if decoder == 'bayesian':
             theta_ext_sampling[i,:] = [ bayesian_decoder(system, r, theta) for r in r_sampling ]
@@ -116,12 +116,13 @@ def parser():
     parser = argparse.ArgumentParser()
     parser.add_argument('-d','--decoder',type=str,required=False,choices=['bayesian','MAP'],default='bayesian')
     parser.add_argument('--case','-c',type=int,required=False,default=1,help="System Configuration")
+    parser.add_argument('--noise','-n',type=str,required=False,default='constant',choices=['constant','adaptive'],help="System Configuration")
     parser.add_argument('-N','--n_trials',type=int,required=False,default=1000,help="Numerosity of the sampling")
     return parser.parse_args()
 
 if __name__ == '__main__':
     from plot_tools import  *
-    from cases import CASES
+    from cases import CASES, A_CASES
     import os
     
     # Parse Arguments
@@ -131,16 +132,23 @@ if __name__ == '__main__':
     save_theta_sampling = True
     DECODER = args.decoder
     CASE    = args.case
-    outdir  = f'/home/paolos/Pictures/decoding/case{CASE}/'
-    N_trial = args.n_trials
-    sampling_file         = outdir + f'/theta_sampling_case{CASE}.txt'
-    control_sampling_file = sampling_file.replace('.txt','_control.txt')
     
+    outdir  = f'{HOMEDIR}/Pictures/decoding/case{CASE}/'
+    N_trial = args.n_trials
+    file_ext = '.txt'
+    if args.noise == 'adaptive':
+        CASES = A_CASES
+        outdir = outdir.replace('case','ADAPTIVE_case')
+        file_ext = '_ADAPTIVE.txt'
+    sampling_file         = outdir + f'/theta_sampling_case{CASE}' + file_ext
+    control_sampling_file = sampling_file.replace('.txt','_control') + file_ext
+
     print()    
-    print("CASE:     ",CASE)    
-    print("DECODER:  ", DECODER)
-    print("OUTDIR:   ",outdir)
-    print("N TRIALS: ",N_trial)
+    print("CASE:        ",CASE)    
+    print("DECODER:     ", DECODER)
+    print("NOISE CORR.: ",args.noise)
+    print("OUTDIR:      ",outdir)
+    print("N TRIALS:    ",N_trial)
     print()    
 
     if not os.path.isdir(outdir):
@@ -158,13 +166,15 @@ if __name__ == '__main__':
         print("Loaded theta sampling from ",sampling_file)
     else:
         theta_sampling = sample_theta_ext( system, THETA, decoder = DECODER )
-        if save_theta_sampling: save_sampling(system, theta_sampling,  CASES[CASE], outdir + f'/theta_sampling_case{CASE}.txt')
+        if save_theta_sampling: save_sampling(system, theta_sampling,  CASES[CASE], sampling_file)
         
     MSE = compute_MSE(theta_sampling)
     FI  = np.array(list(map(system.linear_fisher, THETA)))
     
     # Plot Decoder Error Analysis (Correlated system)
-    plot_theta_error(THETA, theta_sampling, MSE, FI = FI, title = r"$N_{sampling}$" + f': {system.N_trial} ' + r"$\rho_{N}: $" + f"{system.rho:.2}", outdir = outdir)
+    title = r"$N_{sampling}$" + f': {system.N_trial} ' + r"$\rho_{N}: $" + f"{system.rho:.2}" if not callable(system.rho) else \
+            r"$N_{sampling}$" + f': {system.N_trial} ' + r"$\rho_{N}: $" + "STIM. DEPENDENT" 
+    plot_theta_error(THETA, theta_sampling, MSE, FI = FI, title = title, outdir = outdir)
     
     # Plot Histograms
     # plot_theta_ext_prob(THETA, theta_sampling, outdir = outdir)
@@ -177,7 +187,7 @@ if __name__ == '__main__':
         control_theta_sampling = np.loadtxt( control_sampling_file )
         print("Loaded control theta sampling from ",control_sampling_file)
     else:
-        system.rho = 0.0
+        system.rho = 0.0 if not callable(system.rho) else lambda x : 0.0
         system.generate_variance_matrix()
         print()
         print("Simulating Indipendent System")

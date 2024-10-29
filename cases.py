@@ -66,7 +66,7 @@ CASE_A1 = {      'function' : 'fvm',
                 'V'        : 2500,
                 'center_shift'   : np.pi/2,
                 'rho'      : "adaptive",
-                "alpha"    : 10,
+                "alpha"    : 2,
                 "beta"     : 1}
 
     
@@ -166,3 +166,4 @@ CASE_C1_4 = {  'A'           : 4.185765887215448e-09,  # based on Carlo's fit
             'rho'            : 0.92 }
 
 CASES = { i+1 : c for i,c in zip(range(4),[CASE_1,CASE_2,CASE_3,CASE_4]) }
+A_CASES = { i+1 : c for i,c in zip(range(4),[CASE_A1,CASE_A2,CASE_A3,CASE_A4]) }
