@@ -7,10 +7,12 @@ Created on Tue Oct  8 16:59:34 2024
 """
 
 import numpy as np
-import sys
+import sys, os
+import subprocess
 from network import NeuralSystem, THETA
 
-HOMEDIR = "/Users/paoloscaccia/"
+
+HOMEDIR = subprocess.check_output("echo $HOME", shell=True, text=True).replace('\n','')
 
 def moving_average(x,y,w):
     if w == 1:
@@ -21,12 +23,28 @@ def moving_average(x,y,w):
     else:
         return x[n:-n], np.convolve(y, np.ones(w), 'valid') / w
         
+def circular_moving_average(x,y,w):
+    if w == 1:
+        return x,y
+    
+    n = w//2
+
+    if w%2 == 0:
+        y = np.concatenate( ( y[len(x)-n:], y, y[:n]) )
+
+        out = 0.5*(x[n-1:len(x)-n] + x[n:len(x)-(n-1)]), np.convolve(y, np.ones(w), 'valid') / w
+    else:
+        y = np.concatenate( ( y[len(x)-n:], y, y[:n]) )
+        out = x[n:-n], np.convolve(y, np.ones(w), 'valid') / w
+    
+    return out[1]
+    
 
 def bayesian_decoder(system, r, theta):
     from scipy.optimize import minimize_scalar
     
     # Define Integral Parameters
-    N_step = 360
+    N_step = 400
     theta_support = np.linspace(THETA[0], THETA[-1],N_step)
     dtheta = (THETA[-1] - THETA[0])/N_step    
     
@@ -99,15 +117,18 @@ def save_sampling(system, theta_sampling, case, outfile):
     return
 
 def get_filtered_R(theta, MSE1, MSE2):
-    from scipy.interpolate import splrep, BSpline
+    # from scipy.interpolate import splrep, BSpline
+    y = circular_moving_average(theta,MSE1, 5)
+    y = circular_moving_average(theta,y, 5)
 
-    x,y = moving_average(theta,MSE1, 7)
-    x_control,y_control=moving_average(THETA, MSE2,7)
-    R = (1 - (y/y_control))*100
-    tck_s = splrep(x, R, s=len(x))
-    R=BSpline(*tck_s)(theta)
+    y_control = circular_moving_average(THETA, MSE2,5)
+    y_control = circular_moving_average(THETA, y_control,5)
     
+    R = (1 - (y/y_control))*100
+    # tck_s = splrep(x, R, s=len(x)-10)
+    # R=BSpline(*tck_s)(theta)
     return R
+    # circular_moving_average(THETA, R , 7)
 
 
 def parser():
@@ -116,13 +137,13 @@ def parser():
     parser = argparse.ArgumentParser()
     parser.add_argument('-d','--decoder',type=str,required=False,choices=['bayesian','MAP'],default='bayesian')
     parser.add_argument('--case','-c',type=int,required=False,default=1,help="System Configuration")
-    parser.add_argument('--noise','-n',type=str,required=False,default='constant',choices=['constant','adaptive'],help="System Configuration")
+    parser.add_argument('--noise','-n',type=str,required=False,default='constant',choices=['constant','adaptive','poisson'],help="System Configuration")
     parser.add_argument('-N','--n_trials',type=int,required=False,default=1000,help="Numerosity of the sampling")
     return parser.parse_args()
 
 if __name__ == '__main__':
     from plot_tools import  *
-    from cases import CASES, A_CASES
+    from cases import CASES, A_CASES, P_CASES
     import os
     
     # Parse Arguments
@@ -136,10 +157,10 @@ if __name__ == '__main__':
     outdir  = f'{HOMEDIR}/Pictures/decoding/case{CASE}/'
     N_trial = args.n_trials
     file_ext = '.txt'
-    if args.noise == 'adaptive':
-        CASES = A_CASES
-        outdir = outdir.replace('case','ADAPTIVE_case')
-        file_ext = '_ADAPTIVE.txt'
+    if args.noise != 'constant':
+        CASES = A_CASES if args.noise == 'adaptive' else P_CASES
+        outdir = outdir.replace('case',f'{args.noise.upper()}_case')
+        file_ext = f'_{args.noise.upper()}' +'.txt'
     sampling_file         = outdir + f'/theta_sampling_case{CASE}' + file_ext
     control_sampling_file = sampling_file.replace('.txt','_control') + file_ext
 
@@ -174,7 +195,7 @@ if __name__ == '__main__':
     # Plot Decoder Error Analysis (Correlated system)
     title = r"$N_{sampling}$" + f': {system.N_trial} ' + r"$\rho_{N}: $" + f"{system.rho:.2}" if not callable(system.rho) else \
             r"$N_{sampling}$" + f': {system.N_trial} ' + r"$\rho_{N}: $" + "STIM. DEPENDENT" 
-    plot_theta_error(THETA, theta_sampling, MSE, FI = FI, title = title, outdir = outdir)
+    plot_theta_error(THETA, theta_sampling, 2*MSE, FI = FI, title = title, outdir = outdir)
     
     # Plot Histograms
     # plot_theta_ext_prob(THETA, theta_sampling, outdir = outdir)
@@ -197,10 +218,10 @@ if __name__ == '__main__':
 
     # Compute Decoder MSE (Indipendent system)        
     control_MSE = compute_MSE(control_theta_sampling)
-    control_FI=np.array(list(map(system.linear_fisher, THETA)))
+    control_FI  = np.array(list(map(system.linear_fisher, THETA)))
     
     # Plot Decoder Error Analysis (Indipendent system)
-    plot_theta_error(THETA, control_theta_sampling, control_MSE, FI = control_FI,
+    plot_theta_error(THETA, control_theta_sampling, 2*control_MSE, FI = control_FI,
                      title = r"$N_{sampling}$" + f': {system.N_trial}', outdir = outdir, filename = 'control_MSE.png')
 
     # Reload system params
@@ -217,4 +238,15 @@ if __name__ == '__main__':
     plot_gradient_space(system, outfile = outdir +'/gradient_space.png')
     
     # Plot Decoding Accuracy (Heatmap)
-    plot_heatmap(theta_sampling, control_theta_sampling, nbins = 60, outfile = outdir + '/heatmap.png')
+    # case 1 nbins = 90, vmax = 1.8, IMP = 1.8 
+    # case 2 nbins = 90, vmax = 20, IMP = 1.8
+
+    if CASE == 1:
+        plot_heatmap(theta_sampling, control_theta_sampling, nbins = 90, vmax = 10, cmap = 'jet',outfile = outdir + '/heatmap.png')
+    elif CASE == 2:
+        plot_heatmap(theta_sampling, control_theta_sampling, nbins = 90, vmax = 30, cmap = 'jet',outfile = outdir + '/heatmap.png')
+    elif CASE == 3:
+        plot_heatmap(theta_sampling, control_theta_sampling, nbins = 90, vmax = 10, cmap = 'jet',outfile = outdir + '/heatmap.png')
+    elif CASE == 4:
+        plot_heatmap(theta_sampling, control_theta_sampling, nbins = 90, vmax = 30, cmap = 'jet',outfile = outdir + '/heatmap.png')
+        

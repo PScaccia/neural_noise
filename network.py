@@ -105,19 +105,12 @@ class NeuralSystem(object):
                                           A = self.A, function = self.function,
                                           flatness = self.flatness) ]
 
-        if self.rho == 'adaptive':
-            self.update_rho()
+        if self.rho in ['adaptive','poisson']:
+            self.update_rho( self.rho )
             
         # Define Covariance Matrix
         self.generate_variance_matrix()
         
-        # if not callable(self.rho):
-        #     self.inv_sigma = lambda x : np.linalg.inv( self.sigma(x) )
-        # else:
-        #     self.det = lambda x : (self.beta**2)*self.mu[0](x)*self.mu[1](x) - (self.rho(x))**2
-        #     self.inv_sigma = lambda x : (1/self.det(x))*np.array( [[ self.beta*self.mu[1](x), -self.rho(x) ], 
-        #                                                            [-self.rho(x),self.beta*self.mu[0](x) ]])
-
         # Define Linear Fisher
         self.linear_fisher = lambda x: self.grad_vector(x).transpose().dot(self.inv_sigma(x)).dot(self.grad_vector(x))
         
@@ -144,8 +137,13 @@ class NeuralSystem(object):
         self.inv_sigma = lambda x : np.linalg.inv( self.sigma(x))
         return            
     
-    def update_rho(self):
-        self.rho = lambda x:  1.0 - (self.alpha/(self.beta*np.sqrt( self.mu[0](x)*self.mu[1](x)))) 
+    def update_rho(self, mode):
+        if mode == 'adaptive':
+            self.rho = lambda x:  1.0 - (self.alpha/(self.beta*np.sqrt( self.mu[0](x)*self.mu[1](x)))) 
+        elif mode == 'poisson':
+            self.rho = lambda x : self.alpha + x - x
+        else:
+            sys.exit("Unknown correlation type!")
         
     def compute_beneficial_angles(self, theta):
         
@@ -173,7 +171,18 @@ class NeuralSystem(object):
         
         return angles
 
+    def compute_signal_corr(self):
+         theta = np.linspace(0,2*np.pi,500)
+         Z = 1/len(theta)
+         avg_f = lambda x : np.sum(x(theta))*Z
+         
+         diff = np.array([ self.mu[0](theta) - avg_f(self.mu[0]), self.mu[1](theta) - avg_f(self.mu[1]) ])
+         variances = np.sum(diff**2,axis=1)
+         covariance = diff[0,:].dot(diff[1,:])
+                  
+         return covariance/np.sqrt(variances[0]*variances[1])
      
+        
 if __name__ == '__main__':
     from plot_tools import plot_simulation
     from cases import *

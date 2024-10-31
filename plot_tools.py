@@ -39,7 +39,7 @@ def plot_simulation( system, stimolus, plot_gradient = False, E = None,
         axs[0].scatter(data[:,0],data[:,1],
                     alpha=0.5,
                     marker=markers[ j ],
-                    label = r"$\theta$ = {:.3f}".format(  t ) 
+                    label = r"$\theta$ = {:.1f}°".format( np.rad2deg(t) ) 
                     )
         
         if plot_gradient:
@@ -86,13 +86,17 @@ def plot_simulation( system, stimolus, plot_gradient = False, E = None,
                      color = 'black',
                      lw = 3 )
     
-    s = np.sqrt(system.V)
+    try:
+        s = np.sqrt(system.V)
+    except:
+        s = system.beta*system.A
+        
     if len(stimolus) > 0:
         n_sigma = 2
         xmax = max(n_sigma*s,  max(mu1))
         ymax = max(n_sigma*s,  max(mu2))
-        xmin = min(0, min(mu1))
-        ymin = min(0, min(mu2))
+        xmin = min(-n_sigma*s//4, min(mu1))
+        ymin = min(-n_sigma*s//4, min(mu2))
     else:
         xmax = max(mu1) + 5
         xmin = min(mu1) - 5
@@ -104,7 +108,7 @@ def plot_simulation( system, stimolus, plot_gradient = False, E = None,
     axs[0].set_xlabel('Response 1', weight='bold',size=18)
     axs[0].set_ylabel('Response 2', weight='bold',size=18)
     
-    if len(stimolus) > 0:  axs[0].legend( title = r'Neural Response at')
+    if len(stimolus) > 0:  axs[0].legend( title = r'Neural Response at', prop={'size':6})
     axs[0].set_title(r"$N_{sampling}$" + f": {system.N_trial}",size=12)
     plot_tuning_curves(*system.mu, ax = axs[1])
             
@@ -132,11 +136,11 @@ def plot_tuning_curves(mu1, mu2, ax = None):
     return
 
 def plot_theta_error(theta, theta_sampling, MSE , title = ' ', 
-                     outdir = None, FI = None, filename = 'MSE.png'):
+                     outdir = None, FI = None, bias = None, filename = 'MSE.png'):
     
-    ymin = 0.0
-    ymax = 0.1
-    #MSE.max() + 0.5
+    from scipy.misc import derivative
+    from decoder import circular_moving_average
+    from scipy.interpolate import splrep, BSpline
     
     fig, axs = plt.subplots(2,1,figsize = (10,10))
     axs[0].plot(theta, MSE, c='blue', label = 'Decoding\nError',marker='o',ms=3)
@@ -144,21 +148,42 @@ def plot_theta_error(theta, theta_sampling, MSE , title = ' ',
     axs[0].set_ylabel( "Error", weight = 'bold', size = 15)    
     axs[0].set_title(title)
     axs[0].legend(loc='upper left')
-    if FI is not None:
-        ax_twin = axs[0].twinx()
-        ax_twin.plot(theta, 1/FI, label = 'Inverse\nFisher Information',c='black')
-        ax_twin.set_ylim(ymin, ymax)
-        ax_twin.set_ylabel('Cramér-Rao bound\n(Unbiased)',weight='bold', size = 15)
-    plt.legend(loc = 'upper right')
-    axs[0].set_ylim(ymin, ymax)
     
     av_theta = theta_sampling.mean( axis = 1 )
+    bias = av_theta - theta
     
-    axs[1].plot( theta, av_theta, c = 'red')
+    f  = lambda x : np.interp(x, theta, bias)
+    db = lambda x : derivative(f, x, dx=1e-3)
+    
+    bias_prime = circular_moving_average(THETA, db(THETA), 5)
+    
+    N = (1 + bias_prime)**2
+    Biased_CRB = (N/FI) + (bias)**2
+    Biased_CRB = circular_moving_average(theta, Biased_CRB, 11)
+    Biased_CRB = circular_moving_average(theta, Biased_CRB, 11)
+    
+    # tck_s = splrep(theta, Biased_CRB, s=1)
+    # Biased_CRB=BSpline(*tck_s)(theta)
+    
+    ymin = min(MSE.min() - 0.05, min(1/FI) - 0.05, min(Biased_CRB) - 0.05)
+    ymin = max(ymin,0)
+    ymax = MSE.max() + 0.1
+
+    if FI is not None:
+        ax_twin = axs[0].twinx()
+        ax_twin.plot(theta, 1/FI, label = 'Unbiased',c='grey', ls ='--', zorder = 1,alpha=0.7)
+        ax_twin.plot(theta, Biased_CRB , label = 'Biased',c='black',alpha=0.7, zorder = 1)
+        ax_twin.set_ylim(ymin, ymax)
+        ax_twin.set_ylabel('Cramér-Rao bound',weight='bold', size = 15)
+
+    plt.legend(loc = 'upper right')
+    axs[0].set_ylim(ymin, ymax)
+        
+    axs[1].plot(theta, bias, c = 'red')
     axs[1].set_xlabel(r'$\mathbf{\theta}$', size = 15)
-    axs[1].set_ylabel(r"$\mathbf{ \theta - \langle \hat{\theta} } \rangle $", size = 15)
+    axs[1].set_ylabel("Bias",weight='bold', size = 15)
     
-    axs[1].set_title(title)
+    #axs[1].set_title(title)
     
     if outdir is not None:
         plt.savefig(outdir + f'/{filename}',bbox_inches='tight',dpi=300)
@@ -260,7 +285,7 @@ def plot_improvement(theta, R, angles = None, outdir = None, raw_MSE1 = None, ra
     
     if raw_MSE1 is not None and raw_MSE2 is not None:
         from decoder import moving_average
-        x,y = moving_average(theta, raw_MSE1, 7)
+        x,y     = moving_average(theta, raw_MSE1, 7)
         x_2,y_2 = moving_average(theta, raw_MSE2, 7)
         raw_R = (1 - y/y_2)*100
         plt.plot(x, raw_R,label='Unfiltered',lw = 0.4,zorder = 1,c='red')
@@ -304,27 +329,27 @@ def draw_circle_and_arrows(delta_angle, outfile  = None):
     
     return
 
-def plot_heatmap(theta_sampling, theta_sampling_control, nbins = THETA.size , outfile = None, cmap = 'hot'):
+def plot_heatmap(theta_sampling, theta_sampling_control,
+                 nbins = THETA.size , outfile = None, cmap = 'hot', vmax = 80):
     plt.clf()
     plt.figure()
     plt.title("CORRELATED SYSTEM",size = 20)
 
-    VMAX = 80
+    VMAX = vmax
     
     N = theta_sampling.shape[1]
-    bins = np.linspace(0,2*np.pi,nbins+1)
+    bins = np.linspace(0, 2*np.pi,nbins+1)
 
     heatmap = np.zeros((nbins,nbins))
     
     for i,sample in enumerate(theta_sampling.transpose()):    
         heatmap += np.histogram2d(THETA, sample, bins = bins)[0]
     heatmap /= N
-    heatmap = heatmap.transpose()   
     norm = heatmap.sum(axis=0)
     for i,n in enumerate(norm):
         heatmap[:,i] /= n
             
-    plt.imshow(heatmap*100,cmap=cmap,vmin=0,vmax=VMAX,origin='lower')
+    plt.imshow(heatmap*100,cmap=cmap,vmin=0,vmax=VMAX)
     cb=plt.colorbar()
     cb.set_label(label = 'Bin Accuracy [%]', size = 13)
     
@@ -337,7 +362,6 @@ def plot_heatmap(theta_sampling, theta_sampling_control, nbins = THETA.size , ou
     plt.xticks(ticks,labels=tick_labels)
     plt.xlim(-0.5,nbins-0.5)
 
-    # plt.gca().invert_yaxis()
     plt.ylim(-0.5,nbins-0.5)
 
     plt.xlabel(r"Input Stimulus $\mathbf{\theta^{*}}$", weight = 'bold',size=15)
@@ -354,7 +378,6 @@ def plot_heatmap(theta_sampling, theta_sampling_control, nbins = THETA.size , ou
     for i,sample in enumerate(theta_sampling_control.transpose()):    
         heatmap_control += np.histogram2d(THETA, sample, bins = bins)[0]
     heatmap_control /= N
-    heatmap_control = heatmap_control.transpose()   
     norm = heatmap_control.sum(axis=0)
     for i,n in enumerate(norm):
         heatmap_control[:,i] /= n
@@ -364,7 +387,7 @@ def plot_heatmap(theta_sampling, theta_sampling_control, nbins = THETA.size , ou
     plt.clf()
     plt.figure()
     plt.title("INDEPENDENT SYSTEM",size = 20)
-    plt.imshow(heatmap_control*100,cmap=cmap,vmin=0,vmax=VMAX,origin='lower')
+    plt.imshow(heatmap_control*100,cmap=cmap,vmin=0,vmax=VMAX)
     cb=plt.colorbar()
     cb.set_label(label = 'Bin Accuracy [%]', size = 13)
     tick_labels = [ str(int(x))+'°' for x in (ticks+0.5)*360/nbins ]
@@ -387,12 +410,11 @@ def plot_heatmap(theta_sampling, theta_sampling_control, nbins = THETA.size , ou
     plt.yticks(ticks,labels=tick_labels)
     plt.xticks(ticks,labels=tick_labels)
     plt.xlim(-0.5,nbins-0.5)
-    IMP_MAX = 8
+    IMP_MAX = 5
     IMP_MIN = -IMP_MAX
-    # plt.gca().invert_yaxis()
     plt.ylim(-0.5,nbins-0.5)
-    IMP = heatmap - heatmap_control
-    plt.imshow(IMP*100,cmap='seismic',vmin=IMP_MIN,vmax=IMP_MAX,origin='lower')
+    IMP = (heatmap - heatmap_control)
+    plt.imshow(IMP*100,cmap='seismic',vmin=IMP_MIN,vmax=IMP_MAX)
     plt.xlabel(r"Input Stimulus $\mathbf{\theta^{*}}$", weight = 'bold',size=15)
     plt.ylabel(r'Decoded Stimulus $\mathbf{\hat{\theta}}$', weight = 'bold' , size =15)
     line = np.linspace(0,nbins+1,1000)
@@ -408,3 +430,53 @@ def plot_heatmap(theta_sampling, theta_sampling_control, nbins = THETA.size , ou
 
     
     return heatmap, IMP
+
+
+
+def plot_fisher_experiment(systemA, systemB, samplingA, samplingB, MSEA,MSEB):
+    
+    from scipy.misc import derivative
+    
+    FIXED_ANGLE = 2.3291
+    
+    fig,axs = plt.subplots(3,1,sharex=True)
+    FIA = np.array( list(map(systemA.linear_fisher, THETA) ))
+    FIB = np.array( list(map(systemB.linear_fisher, THETA) ))
+    
+    biasA = samplingA.mean(axis=1) - THETA
+    biasB = samplingB.mean(axis=1) - THETA
+    
+    fA = lambda x : np.interp(x,THETA, biasA, left = np.nan, right=np.nan)
+    fB = lambda x : np.interp(x,THETA, biasB, left = np.nan, right=np.nan)
+
+    dA = lambda x: derivative(fA,x,dx=0.001)
+    dB = lambda x: derivative(fB,x,dx=0.001)
+
+    FIA_corrected = ((1+dA(THETA))**2/FIA) + biasA**2
+    FIB_corrected = ((1+dB(THETA))**2/FIB) + biasB**2
+
+    axs[0].plot(THETA, 1/FIA, label='A', c='blue')    
+    axs[0].plot(THETA, 1/FIB, label='B', c='red')    
+
+    axs[1].plot(THETA, FIA_corrected, label='A', c='blue')    
+    axs[1].plot(THETA, FIB_corrected, label='B', c='red')    
+
+    axs[2].plot(THETA, 2*MSEA, label='A', c='blue')    
+    axs[2].plot(THETA, 2*MSEB, label='B', c='red')    
+    axs[2].plot(THETA, FIA_corrected, label='CRB A', c='blue',alpha=0.3,ls='--')    
+    axs[2].plot(THETA, FIB_corrected, label='CRB B', c='red',alpha=0.3,ls='--')    
+
+    axs[1].set_ylim(0,0.01)
+    axs[0].set_ylim(0,0.01)
+    axs[2].set_ylim(0,0.1)
+
+    axs[0].axvline(FIXED_ANGLE, c = 'black')
+    axs[1].axvline(FIXED_ANGLE, c = 'black')
+    axs[2].axvline(FIXED_ANGLE, c = 'black')
+
+    plt.legend()
+    plt.show()
+    
+    
+    
+    return
