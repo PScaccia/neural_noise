@@ -44,7 +44,7 @@ def bayesian_decoder(system, r, theta):
     from scipy.optimize import minimize_scalar
     
     # Define Integral Parameters
-    N_step = 400
+    N_step = 500
     theta_support = np.linspace(THETA[0], THETA[-1],N_step)
     dtheta = (THETA[-1] - THETA[0])/N_step    
     
@@ -106,11 +106,11 @@ def compute_MSE(theta_sampling):
     error = np.array([  1 - np.cos(t - theta_sampling[i,:] )  for i,t in enumerate(THETA) ])
     return np.mean( error, axis = 1)
     
-def save_sampling(system, theta_sampling, case, outfile):
+def save_sampling(system, theta_sampling, case, outfile, decoder = 'bayesian'):
     with open(outfile,"w") as ofile:
         for k,v in case.items():
             print(f"# {k} : {v}", file = ofile)
-        print(f"# DECODER {DECODER}", file = ofile)
+        print(f"# DECODER {decoder}", file = ofile)
         np.savetxt(ofile, theta_sampling)
         print("Saved theta sampling in ", outfile)
     

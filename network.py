@@ -32,7 +32,7 @@ def generate_tuning_curve( function = 'fvm_from_fits',
         # Reference: https://www.biorxiv.org/content/10.1101/2024.06.26.600826.abstract
         return lambda x : A*( ( (np.exp( np.cos(x - center)/width) - np.exp(-1/width) ) /  (np.exp(1/width) - np.exp(-1/width)) )) + b 
     elif function == 'fvm':
-        flatness = abs(flatness)
+        #flatness = abs(flatness)
         # Readapted according to Carlo's fit
         return lambda x: A*np.exp( (  np.cos(( x - center - flatness*np.sin( x - center) )) )/width )  + b 
     # elif function == 'fvm_from_fit':
@@ -71,6 +71,25 @@ def compute_grad( mu, function = 'vm',
         sys.exit("Unknown function")   
     
     return 
+
+def convert_fit_param( params ):
+    a,th_0,s,baseline,g=params
+    f = lambda stimulus, amp, x_peak, width, fact : \
+            amp* np.exp((np.cos(np.deg2rad(stimulus-x_peak-fact*np.sin(np.deg2rad(stimulus-x_peak)))))/width)
+    
+    ftvm_f = lambda x : f(x, a, th_0, s, g)
+    x_bin = np.linspace(0,360,36)
+    Z = np.sum(ftvm_f(x_bin)/a/(len(x_bin)/36))
+    
+    out = {}
+    out['A'] = a/Z
+    out['width'] = s
+    if th_0 < 0: th_0 = 360 + th_0
+    out['center'] = np.deg2rad(th_0)
+    out['flatness'] = np.deg2rad(g)
+    out['b'] = baseline
+        
+    return out
 
 
 class NeuralSystem(object):
@@ -129,8 +148,8 @@ class NeuralSystem(object):
         if callable(self.rho):
             V = lambda x : np.array( [[np.sqrt(self.beta*self.mu[0](x)), 0], 
                                       [0, np.sqrt(self.beta*self.mu[1](x))]])
-            self.sigma = lambda x : V(x).dot(np.array( [[1, self.rho(x)], 
-                                                        [self.rho(x), 1]])).dot(V(x))
+            self.sigma = lambda x : V(x).dot(np.array( [[1, self.alpha], 
+                                                        [self.alpha, 1]])).dot(V(x))
         else:
             self.sigma = lambda x : self.V*np.array( [[1, self.rho], [self.rho, 1]])
             
@@ -182,7 +201,19 @@ class NeuralSystem(object):
                   
          return covariance/np.sqrt(variances[0]*variances[1])
      
-        
+    def compute_rho_signal(self):
+         n = 1000
+         x = np.linspace(0,2*np.pi,1000)
+         
+         mu1bar = np.sum(system.mu[0](x))/n
+         mu2bar = np.sum(system.mu[1](x))/n
+         
+         mu1_std = np.sqrt( np.sum( (system.mu[0](x) - mu1bar)**2 )/n)
+         mu2_std = np.sqrt( np.sum( (system.mu[1](x) - mu2bar)**2 )/n)
+         covar   = np.sum( (  system.mu[0](x) - mu1bar )*( system.mu[1](x) - mu2bar)) / n 
+         
+         return covar/(mu1_std*mu2_std)
+
 if __name__ == '__main__':
     from plot_tools import plot_simulation
     from cases import *

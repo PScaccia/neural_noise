@@ -480,3 +480,56 @@ def plot_fisher_experiment(systemA, systemB, samplingA, samplingB, MSEA,MSEB):
     
     
     return
+
+def plot_all_cases(system, R_list, outfile = None):
+    
+    fig, axs = plt.subplots(2, 2, figsize=(10,10))
+    
+    #theta = np.linspace(0,2*np.pi,360)
+    theta = THETA
+    
+    # Plot Signal Manifold
+    mu1 = list( map( system.mu[0], theta))
+    mu2 = list( map( system.mu[1], theta))
+    
+    cmap='coolwarm'
+
+    Emin = -7
+    Emax =  7
+    
+    norm=plt.Normalize(Emin, Emax)
+    segments = make_segments(mu1, mu2)
+
+    for R,ax in zip(R_list, axs.flatten()):
+        
+        lc = mcoll.LineCollection(segments, array=R, cmap=cmap , norm=norm,
+                              linewidth=4, alpha=1)
+
+        ax.add_collection(lc)
+        cm = fig.colorbar(lc,ax=ax)
+        cm.set_label("Improvement [%]", size = 10, weight = 'bold')    
+        ax.plot()
+    
+    if outfile is None:
+        plt.show()
+    else:
+        plt.savefig( outfile , dpi = 200)
+        print("Saved plot ",outfile)
+        
+        
+        for i,R in enumerate(R_list):
+            single_file = outfile.replace('.png','_{}.png'.format(i+1))
+
+            fig, ax = plt.subplots(1,1,figsize=(10,10))
+            lc = mcoll.LineCollection(segments, array=R, cmap=cmap , norm=norm,
+                                  linewidth=4, alpha=1)
+    
+            ax.add_collection(lc)
+            cm = fig.colorbar(lc,ax=ax)
+            cm.set_label("Improvement [%]", size = 10, weight = 'bold')    
+            ax.plot()
+            
+            plt.savefig( single_file , dpi = 200)
+            print("Saved single plot ", single_file)
+
+    return

@@ -8,7 +8,7 @@ Created on Mon Nov 11 20:50:33 2024
 
 from network import THETA, NeuralSystem
 from decoder import *
-from case import *
+from cases import *
 import numpy as np
 
 def parser():
@@ -29,12 +29,20 @@ if __name__ == '__main__':
     
     args = parser()
     
-    system_A = NeuralSystem(  CASES[4], N_trial = args.N_trial )
-    system_B = NeuralSystem(  CASES_TEST, N_trial = args.N_trial )
+    system_A = NeuralSystem(  CASES[4], N_trial = args.n_trials )
+    system_B = NeuralSystem(  CASE_TEST, N_trial = args.n_trials )
     
-    
-    theta_sampling_A = sample_theta_ext( system_A, THETA, decoder = DECODER )
-    theta_sampling_A = sample_theta_ext( system_A, THETA, decoder = DECODER )
+    theta_grid = np.linspace( args.central_point - args.dtheta*args.n_points//2,  args.central_point + args.dtheta*args.n_points//2, args.n_points )
 
-    theta_space = np.linspace( args.central_point - args.dtheta*args.n_points,  args.central_point + args.dtheta*args.n_points, args.n_points )
+    # Sample
+    print("Sampling system A")
+    theta_sampling_A = sample_theta_ext( system_A, theta_grid, decoder = args.decoder )
+    save_sampling(system_A, theta_sampling_A, CASES[4], args.outdir + '/local_sampling_system_A.txt')    
+
+    print("Sampling system B")
+    theta_sampling_B = sample_theta_ext( system_B, theta_grid, decoder = args.decoder )
+    save_sampling(system_B, theta_sampling_B, CASE_TEST, args.outdir + '/local_sampling_system_A.txt')    
+
+    
+    
     
