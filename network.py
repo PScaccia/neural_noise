@@ -133,6 +133,9 @@ class NeuralSystem(object):
         # Define Linear Fisher
         self.linear_fisher = lambda x: self.grad_vector(x).transpose().dot(self.inv_sigma(x)).dot(self.grad_vector(x))
         
+        # Define Fisher Information
+        # self.fisher = lambda x: self.linear_fisher(x) - self.grad_vector(x).transpose().dot(self.inv_sigma(x)).dot(self.grad_vector(x))
+        
         # Define neurons
         self.neurons    = lambda x: neural_dynamics(x, self.mu, self.sigma(x), self.N_trial)
 

@@ -41,7 +41,8 @@ def plot_simulation( system, stimolus, plot_gradient = False, E = None,
                     marker=markers[ j ],
                     label = r"$\theta$ = {:.1f}°".format( np.rad2deg(t) ) 
                     )
-        
+        axs[0].scatter(data[:,0].mean(), data[:,1].mean(),
+                       marker = 'x',c='red',s=55, zorder = 13)
         if plot_gradient:
             # Plot Derivatives
             x,y  = [ f(t) for f in system.mu]
@@ -121,6 +122,102 @@ def plot_simulation( system, stimolus, plot_gradient = False, E = None,
     
     return 
 
+
+def plot_simulation_single_panel( system, stimolus, plot_gradient = False, E = None, 
+                    outdir = None, color_label = ''):
+    
+    markers = ['o','+','s','^','*','v']
+        
+    fig, ax = plt.subplots(1,1,figsize = (12,12))
+    
+    # Plot Trials per Stimolous
+    for i,t in enumerate(stimolus):
+        data = system.neurons(t)
+        j = i%len(markers)
+        ax.scatter(data[:,0],data[:,1],
+                    alpha=0.5,
+                    marker=markers[ j ],
+                    label = r"$\theta$ = {:.1f}°".format( np.rad2deg(t) ) 
+                    )
+        ax.scatter(data[:,0].mean(), data[:,1].mean(),
+                       marker = 'x',c='red',s=55, zorder = 13)
+        if plot_gradient:
+            # Plot Derivatives
+            x,y  = [ f(t) for f in system.mu]
+            grad = [ f(t) for f in system.grad]
+            #grad /= np.linalg.norm( grad )
+            dx, dy = grad
+            ax.arrow( x,y, dx, dy, color = 'black', zorder = 13, head_width = .15)
+                     
+    # Plot Signal Manifold
+    mu1 = list( map( system.mu[0], THETA))
+    mu2 = list( map( system.mu[1], THETA))
+    
+    if E is not None:
+        cmap='coolwarm'
+        # Emin = E.min()
+        # Emax = np.percentile(E,90)
+
+        Emin = -7
+        Emax =  7
+        
+        norm=plt.Normalize(Emin, Emax)
+        segments = make_segments(mu1, mu2)
+        lc = mcoll.LineCollection(segments, array=E, cmap=cmap , norm=norm,
+                                  linewidth=5, alpha=1)
+
+        ax.add_collection(lc)
+        cm = fig.colorbar(lc,ax=ax)
+        cm.set_label(color_label, size = 10, weight = 'bold')
+
+        """
+        for i,mu1,mu2 in zip( range(theta.size), mu1, list( map( system.mu[1], theta)) ):
+            d=axs[0].scatter( mu1, 
+                             mu2,
+                             color = c[i],
+                             s = 5 )
+        cb = fig.colorbar(d)
+        cb.
+        """
+    else:
+        ax.plot( list( map( system.mu[0], THETA)), 
+                 list( map( system.mu[1], THETA)), 
+                     color = 'black',
+                     lw = 3 )
+    
+    try:
+        s = np.sqrt(system.V)
+    except:
+        s = system.beta*system.A
+        
+    if len(stimolus) > 0:
+        n_sigma = 2
+        xmax = max(n_sigma*s,  max(mu1))
+        ymax = max(n_sigma*s,  max(mu2))
+        xmin = min(-n_sigma*s//4, min(mu1))
+        ymin = min(-n_sigma*s//4, min(mu2))
+    else:
+        xmax = max(mu1) + 5
+        xmin = min(mu1) - 5
+        ymax = max(mu2) + 5
+        ymin = min(mu2) - 5
+    
+    ax.set_xlim(xmin, xmax)
+    ax.set_ylim(ymin, ymax)
+    ax.set_xlabel('Response 1', weight='bold',size=18)
+    ax.set_ylabel('Response 2', weight='bold',size=18)
+    
+    if len(stimolus) > 0:  ax.legend( title = r'Neural Response at', prop={'size':6})
+    ax.set_title(r"$N_{sampling}$" + f": {system.N_trial}",size=12)
+            
+    if outdir is not None:
+        plt.savefig(outdir + '/simulation.png',bbox_inches='tight',dpi=300)
+        print("Simulation plot saved in ",outdir + "/simulation.png")
+    else:
+        plt.show()
+       
+    return 
+
 def plot_tuning_curves(mu1, mu2, ax = None):
     
     if ax is None:
@@ -139,18 +236,24 @@ def plot_theta_error(theta, theta_sampling, MSE , title = ' ',
                      outdir = None, FI = None, bias = None, filename = 'MSE.png'):
     
     from scipy.misc import derivative
+    from scipy.stats import circmean
     from decoder import circular_moving_average
     from scipy.interpolate import splrep, BSpline
     
     fig, axs = plt.subplots(2,1,figsize = (10,10))
     axs[0].plot(theta, MSE, c='blue', label = 'Decoding\nError',marker='o',ms=3)
     axs[0].set_xlabel(r'$\mathbf{\theta}$',size = 15)    
-    axs[0].set_ylabel( "Error", weight = 'bold', size = 15)    
+    axs[0].set_ylabel( "Mean Squared Error [rad]", weight = 'bold', size = 15)    
     axs[0].set_title(title)
     axs[0].legend(loc='upper left')
     
     av_theta = theta_sampling.mean( axis = 1 )
     bias = av_theta - theta
+    
+    error = np.array([ x - theta for x in theta_sampling.transpose()]) 
+    tan_error = np.arctan2( np.sin(error), np.cos(error))
+    MSE = np.sqrt(circmean(tan_error**2,axis=0))
+    MSE = circular_moving_average(THETA,MSE,7) 
     
     f  = lambda x : np.interp(x, theta, bias)
     db = lambda x : derivative(f, x, dx=1e-3)
@@ -159,24 +262,20 @@ def plot_theta_error(theta, theta_sampling, MSE , title = ' ',
     
     N = (1 + bias_prime)**2
     Biased_CRB = (N/FI) + (bias)**2
-    Biased_CRB = circular_moving_average(theta, Biased_CRB, 11)
-    Biased_CRB = circular_moving_average(theta, Biased_CRB, 11)
-    
-    # tck_s = splrep(theta, Biased_CRB, s=1)
-    # Biased_CRB=BSpline(*tck_s)(theta)
+    Biased_CRB = circular_moving_average(theta, Biased_CRB, 3)
+    #Biased_CRB = circular_moving_average(theta, Biased_CRB, 11)
     
     ymin = min(MSE.min() - 0.05, min(1/FI) - 0.05, min(Biased_CRB) - 0.05)
     ymin = max(ymin,0)
     ymax = MSE.max() + 0.1
-
+    ymax = 0.1
+    
     if FI is not None:
-        ax_twin = axs[0].twinx()
-        ax_twin.plot(theta, 1/FI, label = 'Unbiased',c='grey', ls ='--', zorder = 1,alpha=0.7)
-        ax_twin.plot(theta, Biased_CRB , label = 'Biased',c='black',alpha=0.7, zorder = 1)
-        ax_twin.set_ylim(ymin, ymax)
-        ax_twin.set_ylabel('Cramér-Rao bound',weight='bold', size = 15)
+        axs[0].plot(theta, 1/FI, label = 'Unbiased CRB',c='grey', ls ='--', zorder = 1,alpha=0.7)
+        axs[0].plot(theta, Biased_CRB , label = 'Biased CRB',c='black',alpha=0.7, zorder = 1)
+        axs[0].set_ylim(ymin, ymax)
 
-    plt.legend(loc = 'upper right')
+    axs[0].legend(loc = 'upper center')
     axs[0].set_ylim(ymin, ymax)
         
     axs[1].plot(theta, bias, c = 'red')
@@ -532,4 +631,42 @@ def plot_all_cases(system, R_list, outfile = None):
             plt.savefig( single_file , dpi = 200)
             print("Saved single plot ", single_file)
 
+    return
+
+def plot_error_distr( error , title = None, outfile = None, bins = 100):
+    
+    import numpy as np
+    import matplotlib.pyplot as plt
+    
+    N = bins
+    hist,edges = np.histogram(error, bins = N)
+    
+    bottom = 0
+    max_height = 100
+
+
+    theta = np.linspace(0.0, 2 * np.pi, N, endpoint=False)
+    width = (2*np.pi) / N
+    
+    ax = plt.subplot(111, polar=True)
+    bars = ax.bar(theta, hist, width=width, bottom=bottom)
+    
+    # Use custom colors and opacity
+    for r, bar in zip(hist, bars):
+        bar.set_facecolor("maroon")
+        bar.set_alpha(0.8)
+    
+    plt.show()
+
+    """
+    plt.hist(error, bins = 100)
+    if title:
+        plt.title(title)
+        
+    if outfile:
+        plt.savefig(outfile)
+        print("Saved plot ",outfile)
+    else:
+        plt.show()
+    """
     return

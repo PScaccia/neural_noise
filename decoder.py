@@ -40,20 +40,26 @@ def circular_moving_average(x,y,w):
     return out[1]
     
 
-def bayesian_decoder(system, r, theta):
+def bayesian_decoder(system, r, theta, N_step = 600):
     from scipy.optimize import minimize_scalar
     
     # Define Integral Parameters
-    N_step = 500
     theta_support = np.linspace(THETA[0], THETA[-1],N_step)
     dtheta = (THETA[-1] - THETA[0])/N_step    
-    
-    sqrt_det = np.sqrt( np.linalg.det(system.sigma(theta)))
-    InvSigma = system.inv_sigma(theta)
 
+    if not callable(system.rho):    
+        sqrt_det = np.sqrt( np.linalg.det(system.sigma(theta)))
+        norm_factor = dtheta / (2*np.pi*sqrt_det)
+    else:
+        norm_factor = dtheta / (2*np.pi)
+        
     mu_vect          = lambda x :  np.array([system.mu[0](x),system.mu[1](x)]) 
-    cost_function    = lambda x : (  r - mu_vect(x) ).transpose().dot( InvSigma ).dot( r - mu_vect(x) )    
-    P_post           = lambda x : np.exp(-0.5*cost_function(x))
+    cost_function    = lambda x : (  r - mu_vect(x) ).transpose().dot( system.inv_sigma(x) ).dot( r - mu_vect(x) )    
+    
+    if not callable(system.rho):
+        P_post           = lambda x : np.exp(-0.5*cost_function(x))
+    else:
+        P_post           = lambda x : np.exp(-0.5*cost_function(x)) / np.sqrt(np.linalg.det(system.sigma(x)))
     
     # Define Integrand Functions
     P_post_sin = lambda x : P_post(x)*np.sin(x)
@@ -62,7 +68,7 @@ def bayesian_decoder(system, r, theta):
     # Integrate 
     sin = np.sum( list(map(P_post_sin, theta_support)))
     cos = np.sum( list(map(P_post_cos, theta_support)))
-    norm_factor = dtheta / (2*np.pi*sqrt_det)
+
     sin *= norm_factor
     cos *= norm_factor
     
@@ -85,7 +91,7 @@ def MAP_decoder(system, r):
 #    return (minimize_scalar(cost_function, bounds = [THETA[0], THETA[-1]]).x)
 
 
-def sample_theta_ext(system, theta_array, decoder = 'bayesian'):
+def sample_theta_ext(system, theta_array, decoder = 'bayesian', N_step = 600):
     from tqdm import tqdm
     theta_ext_sampling = np.empty( ( len(theta_array), system.N_trial ) )*np.nan
             
@@ -94,7 +100,7 @@ def sample_theta_ext(system, theta_array, decoder = 'bayesian'):
         
         r_sampling = system.neurons(theta)
         if decoder == 'bayesian':
-            theta_ext_sampling[i,:] = [ bayesian_decoder(system, r, theta) for r in r_sampling ]
+            theta_ext_sampling[i,:] = [ bayesian_decoder(system, r, theta, N_step = N_step) for r in r_sampling ]
         elif decoder == 'MAP':
             theta_ext_sampling[i,:] = [ MAP_decoder(system, r) for r in r_sampling ]
         else:
@@ -102,10 +108,17 @@ def sample_theta_ext(system, theta_array, decoder = 'bayesian'):
                     
     return theta_ext_sampling
 
-def compute_MSE(theta_sampling):
-    error = np.array([  1 - np.cos(t - theta_sampling[i,:] )  for i,t in enumerate(THETA) ])
-    return np.mean( error, axis = 1)
-    
+def compute_MSE(theta_sampling, mode = 'cos'):
+    if mode == 'cos':
+        error = np.array([  1 - np.cos(t - theta_sampling[i,:] )  for i,t in enumerate(THETA) ])
+        return np.mean( error, axis = 1)
+    elif mode == 'mse':
+        from scipy.stats import circmean
+        error = np.array([ x - THETA for x in theta_sampling.transpose()]) 
+        tan_error = np.arctan2( np.sin(error), np.cos(error))
+        MSE = np.sqrt(circmean(tan_error**2,axis=0))
+        return MSE
+
 def save_sampling(system, theta_sampling, case, outfile, decoder = 'bayesian'):
     with open(outfile,"w") as ofile:
         for k,v in case.items():
@@ -186,7 +199,7 @@ if __name__ == '__main__':
         theta_sampling = np.loadtxt( sampling_file )
         print("Loaded theta sampling from ",sampling_file)
     else:
-        theta_sampling = sample_theta_ext( system, THETA, decoder = DECODER )
+        theta_sampling = sample_theta_ext( system, THETA, decoder = DECODER, N_step = 360 )
         if save_theta_sampling: save_sampling(system, theta_sampling,  CASES[CASE], sampling_file)
         
     MSE = compute_MSE(theta_sampling)
@@ -213,7 +226,7 @@ if __name__ == '__main__':
         print()
         print("Simulating Indipendent System")
         
-        control_theta_sampling = sample_theta_ext( system, THETA, decoder = DECODER )
+        control_theta_sampling = sample_theta_ext( system, THETA, decoder = DECODER , N_step = 360)
         if save_theta_sampling: save_sampling(system, control_theta_sampling,  CASES[CASE], control_sampling_file)
 
     # Compute Decoder MSE (Indipendent system)        
