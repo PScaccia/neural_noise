@@ -222,11 +222,12 @@ if __name__ == '__main__':
         print("Loaded control theta sampling from ",control_sampling_file)
     else:
         system.rho = 0.0 if not callable(system.rho) else lambda x : 0.0
+        system.alpha = 0.0
         system.generate_variance_matrix()
         print()
         print("Simulating Indipendent System")
         
-        control_theta_sampling = sample_theta_ext( system, THETA, decoder = DECODER , N_step = 360)
+        control_theta_sampling = sample_theta_ext( system, THETA, decoder = DECODER , N_step = 400)
         if save_theta_sampling: save_sampling(system, control_theta_sampling,  CASES[CASE], control_sampling_file)
 
     # Compute Decoder MSE (Indipendent system)        
@@ -245,7 +246,7 @@ if __name__ == '__main__':
     plot_improvement(THETA, R, outdir = outdir, raw_MSE1=MSE, raw_MSE2=control_MSE)
 
     # Plot MSE along Signal Manifold    
-    plot_simulation( system, [], E = R, outdir = outdir, color_label = 'Improvement [%]')
+    plot_simulation( system, [], E = R, outdir = outdir, color_label = 'Improvement [%]', cmap = 'bwr' if args.noise else 'coolwarm')
     
     # Plot Gradient Space
     plot_gradient_space(system, outfile = outdir +'/gradient_space.png')

@@ -26,7 +26,7 @@ def make_segments(x, y):
 
 
 def plot_simulation( system, stimolus, plot_gradient = False, E = None, 
-                    outdir = None, color_label = ''):
+                    outdir = None, color_label = '', cmap = 'coolwarm'):
     
     markers = ['o','+','s','^','*','v']
         
@@ -56,12 +56,12 @@ def plot_simulation( system, stimolus, plot_gradient = False, E = None,
     mu2 = list( map( system.mu[1], THETA))
     
     if E is not None:
-        cmap='coolwarm'
+        cmap=cmap
         # Emin = E.min()
         # Emax = np.percentile(E,90)
 
-        Emin = -7
-        Emax =  7
+        Emin = -1.5
+        Emax =  1.5
         
         norm=plt.Normalize(Emin, Emax)
         segments = make_segments(mu1, mu2)
@@ -124,7 +124,7 @@ def plot_simulation( system, stimolus, plot_gradient = False, E = None,
 
 
 def plot_simulation_single_panel( system, stimolus, plot_gradient = False, E = None, 
-                    outdir = None, color_label = ''):
+                    outdir = None, color_label = '', Emin = -7, Emax = 7):
     
     markers = ['o','+','s','^','*','v']
         
@@ -154,12 +154,12 @@ def plot_simulation_single_panel( system, stimolus, plot_gradient = False, E = N
     mu2 = list( map( system.mu[1], THETA))
     
     if E is not None:
-        cmap='coolwarm'
+        cmap='jet'
         # Emin = E.min()
         # Emax = np.percentile(E,90)
 
-        Emin = -7
-        Emax =  7
+        Emin = Emin
+        Emax =  Emax
         
         norm=plt.Normalize(Emin, Emax)
         segments = make_segments(mu1, mu2)
@@ -168,7 +168,7 @@ def plot_simulation_single_panel( system, stimolus, plot_gradient = False, E = N
 
         ax.add_collection(lc)
         cm = fig.colorbar(lc,ax=ax)
-        cm.set_label(color_label, size = 10, weight = 'bold')
+        cm.set_label(color_label, size = 20, weight = 'bold')
 
         """
         for i,mu1,mu2 in zip( range(theta.size), mu1, list( map( system.mu[1], theta)) ):

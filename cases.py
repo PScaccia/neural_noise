@@ -191,7 +191,27 @@ CASE_18 = {      'function' : 'fvm',
                 'center'   : 2.9616211149125977 - 0.64,
                 'V'        : 2500,
                 'center_shift'   : np.pi/2,
-                'rho'            : -0.95 }
+                'rho'            : -0.5 }
+
+CASE_19 = {      'function' : 'fvm',
+                'A'        : 0.6936204110768727,
+                'width'    : 0.2140327993142855,
+                'flatness' : 0.6585904840291591,
+                'b'        : 1.2731732385019432,
+                'center'   : 2.9616211149125977 - 0.64,
+                'V'        : 25,
+                'center_shift'   : np.pi/2,
+                'rho'            : -.95 }
+
+CASE_20 = {      'function' : 'fvm',
+                'A'        : 0.6936204110768727,
+                'width'    : 0.2140327993142855,
+                'flatness' : 0.6585904840291591,
+                'b'        : 1.2731732385019432,
+                'center'   : 2.9616211149125977 - 0.64,
+                'V'        : 25,
+                'center_shift'   : np.pi/2,
+                'rho'            : -0.5 }
 
 ####################################################################################
 #                 STIM-INDEPENDENT NOISE W CELL 2  (POISSON)                       #
@@ -242,6 +262,18 @@ CASE_P4 = {     'function' : 'fvm',
                 'rho'      : "poisson",
                 "alpha"    : 0.95,
                 "beta"     : 0.01}
+
+CASE_P5 = {     'function' : 'fvm',
+                'A'        : 1.609874980656409e-10,
+                 'width'   : 0.04008507948420414,
+                 'center'  : 4.814400368872799 - 2.5,
+                 'flatness': 0.8999356386649207,
+                 'b'       : 0.7487998754100026,
+                'V'        : 25,
+                'center_shift'   : np.pi/2,
+                'rho'      : "poisson",
+                "alpha"    : 0.95,
+                "beta"     : 20}
 
 ####################################################################################
 #                 STIM. DEPENDENT NOISE                                            #
@@ -323,7 +355,7 @@ CASE_TEST_2 = { 'function' : 'fvm',
 
 
 ####################################################################################
-#                 `INDEPENDENT NOISE  W CELL 1                                     #
+#                 `INDEPENDENT NOISE  W CELL 1  (GAUSSIAN)                         #
 ####################################################################################
 
 CASE_C1_1 = {  'A'           : 4.185765887215448e-09,  # based on Carlo's fit
@@ -366,6 +398,6 @@ CASE_C1_4 = {  'A'           : 4.185765887215448e-09,  # based on Carlo's fit
             'V'              : 25,
             'rho'            : 0.92 }
 
-CASES = { i+1 : c for i,c in zip(range(18),[CASE_1,CASE_2,CASE_3,CASE_4, CASE_5,CASE_6,CASE_7, CASE_8, CASE_9, CASE_10,CASE_11, CASE_12, CASE_13,CASE_14, CASE_15, CASE_16, CASE_17, CASE_18]) }
+CASES   = { i+1 : c for i,c in zip(range(20),[CASE_1,CASE_2,CASE_3,CASE_4, CASE_5,CASE_6,CASE_7, CASE_8, CASE_9, CASE_10,CASE_11, CASE_12, CASE_13,CASE_14, CASE_15, CASE_16, CASE_17, CASE_18, CASE_19, CASE_20]) }
 A_CASES = { i+1 : c for i,c in zip(range(4),[CASE_A1,CASE_A2,CASE_A3,CASE_A4]) }
-P_CASES = { i+1 : c for i,c in zip(range(4),[CASE_P1,CASE_P2,CASE_P3,CASE_P4]) }
+P_CASES = { i+1 : c for i,c in zip(range(5),[CASE_P1,CASE_P2,CASE_P3,CASE_P4, CASE_P5]) }
