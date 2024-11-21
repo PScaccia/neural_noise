@@ -91,30 +91,59 @@ def MAP_decoder(system, r):
 #    return (minimize_scalar(cost_function, bounds = [THETA[0], THETA[-1]]).x)
 
 
-def sample_theta_ext(system, theta_array, decoder = 'bayesian', N_step = 600):
+def sample_theta_ext(system, theta_array, decoder = 'bayesian', N_step = 600, 
+                     multi_thread = False, num_thread = 5):
     from tqdm import tqdm
+
     theta_ext_sampling = np.empty( ( len(theta_array), system.N_trial ) )*np.nan
-            
-    for i,theta in zip(tqdm(range(len(theta_array)), desc = 'Computing decoding error: ' ), theta_array):
-                    
+
+    if multi_thread is False:            
+        for i,theta in zip(tqdm(range(len(theta_array)), desc = 'Computing decoding error: ' ), theta_array):
+            r_sampling = system.neurons(theta)
+            if decoder == 'bayesian':
+                theta_ext_sampling[i,:] = [ bayesian_decoder(system, r, theta, N_step = N_step) for r in r_sampling ]
+            elif decoder == 'MAP':
+                theta_ext_sampling[i,:] = [ MAP_decoder(system, r) for r in r_sampling ]
+            else:
+                sys.exit("Not implemented yet!")
+    else:
+        # Multi Thread !!!
+        import concurrent.futures
+        num_threads = num_thread
+
+        if len(theta_array)%num_threads != 0:
+            sys.exit(f"Num. worker should be a divisor of the input size ({len(theta_array)})")
+
+        def get_sample(input_array):
+            _tmp = np.empty( ( len(input_array), system.N_trial ) )*np.nan
+            for i,theta in zip(tqdm(range(len(input_array)), desc = 'Computing decoding error: ' ), input_array):
+                r_sampling = system.neurons(theta)    
+                if decoder == 'bayesian':
+                    _tmp[i,:] = [ bayesian_decoder(system, r, theta, N_step = N_step) for r in r_sampling ]
+                elif decoder == 'MAP':
+                    _tmp[i,:] = [ MAP_decoder(system, r) for r in r_sampling ]
+                else:
+                    sys.exit("Not implemented yet!")
+            return _tmp
         
-        r_sampling = system.neurons(theta)
-        if decoder == 'bayesian':
-            theta_ext_sampling[i,:] = [ bayesian_decoder(system, r, theta, N_step = N_step) for r in r_sampling ]
-        elif decoder == 'MAP':
-            theta_ext_sampling[i,:] = [ MAP_decoder(system, r) for r in r_sampling ]
-        else:
-            sys.exit("Not implemented yet!")
+        inputs = theta_array.reshape(num_thread, len(theta_array)//num_thread)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
+            # Esegui la funzione f() in parallelo con input diversi
+            futures = {executor.submit(get_sample, x): x for x in inputs}
+
+            # Raccogli i risultati
+            results = [ future.result() for future in concurrent.futures.as_completed(futures)]
+            theta_ext_sampling = np.vstack(np.array(results))
                     
     return theta_ext_sampling
 
-def compute_MSE(theta_sampling, mode = 'cos'):
+def compute_MSE(theta_sampling, mode = 'cos', theta = THETA):
     if mode == 'cos':
-        error = np.array([  1 - np.cos(t - theta_sampling[i,:] )  for i,t in enumerate(THETA) ])
+        error = np.array([  1 - np.cos(t - theta_sampling[i,:] )  for i,t in enumerate(theta) ])
         return np.mean( error, axis = 1)
     elif mode == 'mse':
         from scipy.stats import circmean
-        error = np.array([ x - THETA for x in theta_sampling.transpose()]) 
+        error = np.array([ x - theta for x in theta_sampling.transpose()]) 
         tan_error = np.arctan2( np.sin(error), np.cos(error))
         MSE = np.sqrt(circmean(tan_error**2,axis=0))
         return MSE
@@ -152,6 +181,8 @@ def parser():
     parser.add_argument('--case','-c',type=int,required=False,default=1,help="System Configuration")
     parser.add_argument('--noise','-n',type=str,required=False,default='constant',choices=['constant','adaptive','poisson'],help="System Configuration")
     parser.add_argument('-N','--n_trials',type=int,required=False,default=1000,help="Numerosity of the sampling")
+    parser.add_argument('--n_proc',type=int,required=False,default=5,help="Number of workers")
+    parser.add_argument('--multi_thread',type=bool, action='store_true', default=False,help="Multi-threading")
     return parser.parse_args()
 
 if __name__ == '__main__':
@@ -178,11 +209,12 @@ if __name__ == '__main__':
     control_sampling_file = sampling_file.replace('.txt','_control') + file_ext
 
     print()    
-    print("CASE:        ",CASE)    
-    print("DECODER:     ", DECODER)
-    print("NOISE CORR.: ",args.noise)
-    print("OUTDIR:      ",outdir)
-    print("N TRIALS:    ",N_trial)
+    print("CASE:         ",CASE)    
+    print("DECODER:      ", DECODER)
+    print("NOISE CORR.:  ",args.noise)
+    print("OUTDIR:       ",outdir)
+    print("N TRIALS:     ",N_trial)
+    print("MULTI-THREAD: ",args.multi_thread)
     print()    
 
     if not os.path.isdir(outdir):
