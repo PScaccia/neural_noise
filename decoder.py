@@ -136,7 +136,7 @@ def sample_theta_ext(system, theta_array, decoder = 'bayesian', N_step = 600,
                 
             # Gather results
             results = [ (future.result(), futures[future]) for future in concurrent.futures.as_completed(futures)]
-            
+            t
             # Order results
             sorted_results = list(map( lambda x: x[0], sorted(results, key=lambda x: x[1][0])))
  
