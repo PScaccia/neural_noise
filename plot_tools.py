@@ -60,8 +60,8 @@ def plot_simulation( system, stimolus, plot_gradient = False, E = None,
         # Emin = E.min()
         # Emax = np.percentile(E,90)
 
-        Emin = -1.5
-        Emax =  1.5
+        Emin = -3
+        Emax =  3
         
         norm=plt.Normalize(Emin, Emax)
         segments = make_segments(mu1, mu2)

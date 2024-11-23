@@ -101,11 +101,12 @@ def sample_theta_ext(system, theta_array, decoder = 'bayesian', N_step = 600,
         for i,theta in zip(tqdm(range(len(theta_array)), desc = 'Computing decoding error: ' ), theta_array):
             r_sampling = system.neurons(theta)
             if decoder == 'bayesian':
-                theta_ext_sampling[i,:] = [ bayesian_decoder(system, r, theta, N_step = N_step) for r in r_sampling ]
+                decoder_f = lambda r: bayesian_decoder(system, r, theta, N_step = N_step)
             elif decoder == 'MAP':
-                theta_ext_sampling[i,:] = [ MAP_decoder(system, r) for r in r_sampling ]
+                decoder_f = lambda r: MAP_decoder(system, r)
             else:
                 sys.exit("Not implemented yet!")
+            theta_ext_sampling[i,:] = list(map(decoder_f,r_sampling))
     else:
         # Multi Thread !!!
         import concurrent.futures
@@ -119,22 +120,28 @@ def sample_theta_ext(system, theta_array, decoder = 'bayesian', N_step = 600,
             for i,theta in zip(tqdm(range(len(input_array)), desc = 'Computing decoding error: ' ), input_array):
                 r_sampling = system.neurons(theta)    
                 if decoder == 'bayesian':
-                    _tmp[i,:] = [ bayesian_decoder(system, r, theta, N_step = N_step) for r in r_sampling ]
+                    decoder_f = lambda r: bayesian_decoder(system, r, theta, N_step = N_step)
                 elif decoder == 'MAP':
-                    _tmp[i,:] = [ MAP_decoder(system, r) for r in r_sampling ]
+                    decoder_f = lambda r: MAP_decoder(system, r)
                 else:
                     sys.exit("Not implemented yet!")
+                _tmp[i,:] = list(map(decoder_f,r_sampling))
             return _tmp
         
         inputs = theta_array.reshape(num_thread, len(theta_array)//num_thread)
+        
         with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
             # Esegui la funzione f() in parallelo con input diversi
             futures = {executor.submit(get_sample, x): x for x in inputs}
-
-            # Raccogli i risultati
-            results = [ future.result() for future in concurrent.futures.as_completed(futures)]
-            theta_ext_sampling = np.vstack(np.array(results))
-                    
+                
+            # Gather results
+            results = [ (future.result(), futures[future]) for future in concurrent.futures.as_completed(futures)]
+            
+            # Order results
+            sorted_results = list(map( lambda x: x[0], sorted(results, key=lambda x: x[1][0])))
+ 
+            theta_ext_sampling = np.vstack(np.array(sorted_results))
+            
     return theta_ext_sampling
 
 def compute_MSE(theta_sampling, mode = 'cos', theta = THETA):
@@ -182,7 +189,8 @@ def parser():
     parser.add_argument('--noise','-n',type=str,required=False,default='constant',choices=['constant','adaptive','poisson'],help="System Configuration")
     parser.add_argument('-N','--n_trials',type=int,required=False,default=1000,help="Numerosity of the sampling")
     parser.add_argument('--n_proc',type=int,required=False,default=5,help="Number of workers")
-    parser.add_argument('--multi_thread',type=bool, action='store_true', default=False,help="Multi-threading")
+    parser.add_argument('--multi_thread',action='store_true', default=False,help="Multi-threading")
+    parser.add_argument('-N_step','--integration_step',type=int,required=False,default=360,help="Number of integration step for the Bayesian Extimation")
     return parser.parse_args()
 
 if __name__ == '__main__':
@@ -200,6 +208,7 @@ if __name__ == '__main__':
     
     outdir  = f'{HOMEDIR}/Pictures/decoding/case{CASE}/'
     N_trial = args.n_trials
+    N_step  = args.integration_step
     file_ext = '.txt'
     if args.noise != 'constant':
         CASES = A_CASES if args.noise == 'adaptive' else P_CASES
@@ -231,7 +240,7 @@ if __name__ == '__main__':
         theta_sampling = np.loadtxt( sampling_file )
         print("Loaded theta sampling from ",sampling_file)
     else:
-        theta_sampling = sample_theta_ext( system, THETA, decoder = DECODER, N_step = 360 )
+        theta_sampling = sample_theta_ext( system, THETA, decoder = DECODER, N_step = N_step,  multi_thread = args.multi_thread, num_thread=args.n_proc)
         if save_theta_sampling: save_sampling(system, theta_sampling,  CASES[CASE], sampling_file)
         
     MSE = compute_MSE(theta_sampling)
@@ -259,7 +268,7 @@ if __name__ == '__main__':
         print()
         print("Simulating Indipendent System")
         
-        control_theta_sampling = sample_theta_ext( system, THETA, decoder = DECODER , N_step = 400)
+        control_theta_sampling = sample_theta_ext( system, THETA, decoder = DECODER , N_step = N_step, multi_thread = args.multi_thread, num_thread=args.n_proc)
         if save_theta_sampling: save_sampling(system, control_theta_sampling,  CASES[CASE], control_sampling_file)
 
     # Compute Decoder MSE (Indipendent system)        
@@ -278,7 +287,7 @@ if __name__ == '__main__':
     plot_improvement(THETA, R, outdir = outdir, raw_MSE1=MSE, raw_MSE2=control_MSE)
 
     # Plot MSE along Signal Manifold    
-    plot_simulation( system, [], E = R, outdir = outdir, color_label = 'Improvement [%]', cmap = 'bwr' if args.noise else 'coolwarm')
+    plot_simulation( system, [], E = R, outdir = outdir, color_label = 'Improvement [%]', cmap = 'coolwarm' if args.noise else 'coolwarm')
     
     # Plot Gradient Space
     plot_gradient_space(system, outfile = outdir +'/gradient_space.png')
