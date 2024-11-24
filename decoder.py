@@ -10,6 +10,7 @@ import numpy as np
 import sys, os
 import subprocess
 from network import NeuralSystem, THETA
+from tqdm import tqdm
 
 
 HOMEDIR = subprocess.check_output("echo $HOME", shell=True, text=True).replace('\n','')
@@ -93,7 +94,6 @@ def MAP_decoder(system, r):
 
 def sample_theta_ext(system, theta_array, decoder = 'bayesian', N_step = 600, 
                      multi_thread = False, num_thread = 5):
-    from tqdm import tqdm
 
     theta_ext_sampling = np.empty( ( len(theta_array), system.N_trial ) )*np.nan
 
@@ -109,13 +109,14 @@ def sample_theta_ext(system, theta_array, decoder = 'bayesian', N_step = 600,
             theta_ext_sampling[i,:] = list(map(decoder_f,r_sampling))
     else:
         # Multi Thread !!!
-        import concurrent.futures
+        from multiprocess import Pool
+
         num_threads = num_thread
 
         if len(theta_array)%num_threads != 0:
             sys.exit(f"Num. worker should be a divisor of the input size ({len(theta_array)})")
-
-        def get_sample(input_array):
+            
+        def get_single_theta_sample( input_array ):
             _tmp = np.empty( ( len(input_array), system.N_trial ) )*np.nan
             for i,theta in zip(tqdm(range(len(input_array)), desc = 'Computing decoding error: ' ), input_array):
                 r_sampling = system.neurons(theta)    
@@ -127,20 +128,27 @@ def sample_theta_ext(system, theta_array, decoder = 'bayesian', N_step = 600,
                     sys.exit("Not implemented yet!")
                 _tmp[i,:] = list(map(decoder_f,r_sampling))
             return _tmp
-        
+
+        pool = Pool(processes = num_threads)        
         inputs = theta_array.reshape(num_thread, len(theta_array)//num_thread)
-        
-        with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
-            # Esegui la funzione f() in parallelo con input diversi
-            futures = {executor.submit(get_sample, x): x for x in inputs}
+        sorted_results = pool.map( get_single_theta_sample,\
+                                       inputs )
+        theta_ext_sampling = np.vstack(np.array(sorted_results))
+
+        # cloud_frac_batches, n_pixels_batches = [ o[0] for o in output], [ o[1] for o in output]
+        # pool.close()
+
+        # with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
+        #     # Esegui la funzione f() in parallelo con input diversi
+        #     futures = {executor.submit(get_sample, x): x for x in inputs}
                 
-            # Gather results
-            results = [ (future.result(), futures[future]) for future in concurrent.futures.as_completed(futures)]
-            t
-            # Order results
-            sorted_results = list(map( lambda x: x[0], sorted(results, key=lambda x: x[1][0])))
+        #     # Gather results
+        #     results = [ (future.result(), futures[future]) for future in concurrent.futures.as_completed(futures)]
+        #     t
+        #     # Order results
+        #     sorted_results = list(map( lambda x: x[0], sorted(results, key=lambda x: x[1][0])))
  
-            theta_ext_sampling = np.vstack(np.array(sorted_results))
+        #     theta_ext_sampling = np.vstack(np.array(sorted_results))
             
     return theta_ext_sampling
 
