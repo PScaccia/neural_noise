@@ -226,7 +226,7 @@ CASE_P1 = {     'function' : 'fvm',
                 'center_shift'  : np.pi/2,
                 'rho'      : "poisson",
                 "alpha"    : 0.1,
-                "beta"     : 1}
+                "beta"     : 0.9}
     
 CASE_P2 = {     'function' : 'fvm',
                 'A': 1.609874980656409e-10,
@@ -283,7 +283,7 @@ CASE_P6 = {     'function' : 'fvm',
                 'center_shift'   : np.pi/2,
                 'rho'      : "poisson",
                 "alpha"    : 0.1,
-                "beta"     : 0.7}
+                "beta"     : 0.5}
 
 CASE_P7 = {     'function' : 'fvm',
                 'A'        : 1.609874980656409e-10,
@@ -294,61 +294,137 @@ CASE_P7 = {     'function' : 'fvm',
                 'center_shift'   : np.pi/2,
                 'rho'      : "poisson",
                 "alpha"    : 0.1,
+                "beta"     : 1.0}
+
+CASE_P8 = {     'function' : 'fvm',
+                'A'        : 1.609874980656409e-10,
+                 'width'   : 0.04008507948420414,
+                 'center'  : 4.814400368872799 - 2.5,
+                 'flatness': 0.8999356386649207,
+                 'b'       : 0.7487998754100026,
+                'center_shift'   : np.pi/2,
+                'rho'      : "poisson",
+                "alpha"    : 0.1,
+                "beta"     : 1.0}
+
+CASE_P9 = {     'function' : 'fvm',
+                'A'        : 1.609874980656409e-10,
+                 'width'   : 0.04008507948420414,
+                 'center'  : 4.814400368872799 - 2.5,
+                 'flatness': 0.8999356386649207,
+                 'b'       : 0.7487998754100026,
+                'center_shift'   : np.pi/2,
+                'rho'      : "poisson",
+                "alpha"    : 0.1,
+                "beta"     : 0.4}
+
+CASE_P10 = {     'function' : 'fvm',
+                'A'        : 1.609874980656409e-10,
+                 'width'   : 0.04008507948420414,
+                 'center'  : 4.814400368872799 - 2.5,
+                 'flatness': 0.8999356386649207,
+                 'b'       : 0.7487998754100026,
+                'center_shift'   : np.pi/2,
+                'rho'      : "poisson",
+                "alpha"    : -0.95,
                 "beta"     : 0.9}
+
+CASE_P11 = {     'function' : 'fvm',
+                'A'        : 1.609874980656409e-10,
+                 'width'   : 0.04008507948420414,
+                 'center'  : 4.814400368872799 - 2.5,
+                 'flatness': 0.8999356386649207,
+                 'b'       : 0.7487998754100026,
+                'center_shift'   : np.pi/2,
+                'rho'      : "poisson",
+                "alpha"    : -0.95,
+                "beta"     : 0.01}
+
+CASE_P12 = {     'function' : 'fvm',
+                'A'        : 1.609874980656409e-10,
+                 'width'   : 0.04008507948420414,
+                 'center'  : 4.814400368872799 - 2.5,
+                 'flatness': 0.8999356386649207,
+                 'b'       : 0.7487998754100026,
+                'center_shift'   : np.pi/2,
+                'rho'      : "poisson",
+                "alpha"    : -0.5,
+                "beta"     : 0.01}
+
+CASE_P13 = {     'function' : 'fvm',
+                'A'        : 1.609874980656409e-10,
+                 'width'   : 0.04008507948420414,
+                 'center'  : 4.814400368872799 - 2.5,
+                 'flatness': 0.8999356386649207,
+                 'b'       : 0.7487998754100026,
+                'center_shift'   : np.pi/2,
+                'rho'      : "poisson",
+                "alpha"    : -0.5,
+                "beta"     : 0.9 }
+
+CASE_P14 = {     'function' : 'fvm',
+                'A'        : 1.609874980656409e-10,
+                 'width'   : 0.04008507948420414,
+                 'center'  : 4.814400368872799 - 2.5,
+                 'flatness': 0.8999356386649207,
+                 'b'       : 0.7487998754100026,
+                'center_shift'   : np.pi/2,
+                'rho'      : "poisson",
+                "alpha"    : 0.95,
+                "beta"     : 0.032 }
 
 ####################################################################################
 #                 STIM. DEPENDENT NOISE                                            #
 ####################################################################################
 
 
-CASE_A1 = {      'function' : 'fvm',
-                'A'        : 0.6936204110768727,
-                'width'    : 0.2140327993142855,
-                'flatness' : 0.6585904840291591,
-                'b'        : 1.2731732385019432,
-                'center'   : 2.9616211149125977 - 0.64,
+CASE_A1 = {     'function' : 'fvm',
+                'A'        : 1.609874980656409e-10,
+                'width'    : 0.04008507948420414,
+                'center'   : 4.814400368872799 - 2.5,
+                'flatness' : 0.8999356386649207,
+                'b'        : 0.7487998754100026,
+                'center_shift'  : np.pi/2,
+                'rho'      : "adaptive",
+                "alpha"    : 0.1,
+                "beta"     : 0.9}
+    
+CASE_A2 = {     'function' : 'fvm',
+                'A': 1.609874980656409e-10,
+                 'width': 0.04008507948420414,
+                 'center': 4.814400368872799 - 2.5,
+                 'flatness': 0.8999356386649207,
+                 'b': 0.7487998754100026,
+                 'center_shift'   : np.pi/2,
+                 'rho'      : "adaptive",
+                "alpha"    : 0.1,
+                "beta"     : 0.01}
+
+CASE_A3 = {      'function' : 'fvm',
+                 'A': 1.609874980656409e-10,
+                 'width': 0.04008507948420414,
+                 'center': 4.814400368872799 - 2.5,
+                 'flatness': 0.8999356386649207,
+                 'b': 0.7487998754100026, 
                 'V'        : 2500,
                 'center_shift'   : np.pi/2,
                 'rho'      : "adaptive",
-                "alpha"    : 2,
-                "beta"     : 1}
+                "alpha"    : 0.95,
+                "beta"     : 0.9}
 
-    
-CASE_A2 = {  'A'             : 4.185765887215448e-09,  # based on Carlo's fit
-            'width'          : 0.0428942145079092,     # base on Carlo's fit
-            'center'         : 1.7103939222623101,     # radiants, but base on Carlo's fit
-            'function'       : 'fvm',
-            'flatness'       : 0.768665715255412,      # based on Carlo's fit
-            'b'              : 7.205646924554782,      # base on Carlo's fit
-            'center_shift'   : np.pi/4,
-            'V'              : 25,
-            'rho'            : "adaptive",
-            'alpha'          : 10,
-            'beta'           : 1}
+CASE_A4 = {     'function' : 'fvm',
+                'A'        : 1.609874980656409e-10,
+                 'width'   : 0.04008507948420414,
+                 'center'  : 4.814400368872799 - 2.5,
+                 'flatness': 0.8999356386649207,
+                 'b'       : 0.7487998754100026,
+                'V'        : 25,
+                'center_shift'   : np.pi/2,
+                'rho'      : "adaptive",
+                "alpha"    : 0.95,
+                "beta"     : 0.01}
 
-CASE_A3 = {  'A'              : 4.185765887215448e-09,  # based on Carlo's fit
-            'width'          : 0.0428942145079092,     # base on Carlo's fit
-            'center'         : 1.7103939222623101,     # radiants, but base on Carlo's fit
-            'function'       : 'fvm',
-            'flatness'       : 0.768665715255412,      # based on Carlo's fit
-            'b'              : 7.205646924554782,      # base on Carlo's fit
-            'center_shift'   : np.pi/4,
-            'V'              : 2500,
-            'rho'            : "adaptive",
-            'alpha'          : 10,
-            'beta'           : 1}
 
-CASE_A4 = {  'A'              : 4.185765887215448e-09,  # based on Carlo's fit
-            'width'          : 0.0428942145079092,     # base on Carlo's fit
-            'center'         : 1.7103939222623101,     # radiants, but base on Carlo's fit
-            'function'       : 'fvm',
-            'flatness'       : 0.768665715255412,      # based on Carlo's fit
-            'b'              : 7.205646924554782,      # base on Carlo's fit
-            'center_shift'   : np.pi/4,
-            'V'              : 25,
-            'rho'            : "adaptive",
-            'alpha'          : 10,
-            'beta'           : 1}
 
 ####################################################################################
 #               TEST TUNING CURVE                                           #
@@ -362,7 +438,7 @@ CASE_TEST = {      'function' : 'fvm',
                 'center'   : 2.9616211149125977 - 0.64,
                 'V'        : 25,
                 'center_shift'   : np.pi/4,
-                'rho'            : 0.95 }
+                'rho'            : 0.1 }
 
 CASE_TEST_2 = { 'function' : 'fvm',
                 'A'        : 0.6936204110768727,
@@ -421,4 +497,4 @@ CASE_C1_4 = {  'A'           : 4.185765887215448e-09,  # based on Carlo's fit
 
 CASES   = { i+1 : c for i,c in zip(range(20),[CASE_1,CASE_2,CASE_3,CASE_4, CASE_5,CASE_6,CASE_7, CASE_8, CASE_9, CASE_10,CASE_11, CASE_12, CASE_13,CASE_14, CASE_15, CASE_16, CASE_17, CASE_18, CASE_19, CASE_20]) }
 A_CASES = { i+1 : c for i,c in zip(range(4),[CASE_A1,CASE_A2,CASE_A3,CASE_A4]) }
-P_CASES = { i+1 : c for i,c in zip(range(7),[CASE_P1,CASE_P2,CASE_P3,CASE_P4, CASE_P5, CASE_P6, CASE_P7]) }
+P_CASES = { i+1 : c for i,c in zip(range(14),[CASE_P1,CASE_P2,CASE_P3,CASE_P4, CASE_P5, CASE_P6, CASE_P7, CASE_P8, CASE_P9, CASE_P10, CASE_P11, CASE_P12, CASE_P13, CASE_P14]) }

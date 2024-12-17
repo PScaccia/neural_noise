@@ -91,6 +91,10 @@ def convert_fit_param( params ):
         
     return out
 
+def compute_corr_matrix( vector , rho):
+    w = np.array([-vector[1],vector[0]])
+    v = vector
+    return np.eye(vector.size) + rho*(  np.outer(v,v)/v.dot(v) - np.outer(w,w)/w.dot(w) )
 
 class NeuralSystem(object):
     
@@ -105,6 +109,8 @@ class NeuralSystem(object):
         for k,i in parameters.items():
             self.__dict__[k] = i
         self.N_trial    = int(N_trial)
+        self.var_stim_dependence  = True if self.rho in ['adaptive','poisson'] else False
+        self.corr_stim_dependence = True if self.rho == 'adaptive' else False
         
         # Define tuning curves and their gradients
         self.mu         = [ generate_tuning_curve( width  = self.width,
@@ -134,7 +140,7 @@ class NeuralSystem(object):
         self.linear_fisher = lambda x: self.grad_vector(x).transpose().dot(self.inv_sigma(x)).dot(self.grad_vector(x))
         
         # Define Fisher Information
-        # self.fisher = lambda x: self.linear_fisher(x) - self.grad_vector(x).transpose().dot(self.inv_sigma(x)).dot(self.grad_vector(x))
+        # self.fisher = ...
         
         # Define neurons
         self.neurons    = lambda x: neural_dynamics(x, self.mu, self.sigma(x), self.N_trial)
@@ -148,12 +154,21 @@ class NeuralSystem(object):
         if D != 2:
             sys.exit("Not implemented yet!")
         
-        if callable(self.rho):
+        if self.var_stim_dependence:
             V = lambda x : np.array( [[np.sqrt(self.beta*self.mu[0](x)), 0], 
                                       [0, np.sqrt(self.beta*self.mu[1](x))]])
-            self.sigma = lambda x : V(x).dot(np.array( [[1, self.alpha], 
-                                                        [self.alpha, 1]])).dot(V(x))
+            
+            if self.corr_stim_dependence:
+                # Case with stim-dependent Variance AND correation
+                C = lambda x : compute_corr_matrix(np.array( [self.grad[0](x), self.grad[1](x)]), self.alpha)
+            else:
+                # Case with stim-dependent Variance BUT fixed correation
+                C = lambda x : compute_corr_matrix(np.ones(D), self.alpha)
+                
+            self.sigma = lambda x : V(x).dot(C(x)).dot(V(x))
+            
         else:
+            # Case with stim-independent Matrix
             self.sigma = lambda x : self.V*np.array( [[1, self.rho], [self.rho, 1]])
             
         self.inv_sigma = lambda x : np.linalg.inv( self.sigma(x))
@@ -161,7 +176,7 @@ class NeuralSystem(object):
     
     def update_rho(self, mode):
         if mode == 'adaptive':
-            self.rho = lambda x:  1.0 - (self.alpha/(self.beta*np.sqrt( self.mu[0](x)*self.mu[1](x)))) 
+            self.rho = lambda x : self.alpha + x - x
         elif mode == 'poisson':
             self.rho = lambda x : self.alpha + x - x
         else:

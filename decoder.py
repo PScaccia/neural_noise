@@ -168,20 +168,30 @@ def save_sampling(system, theta_sampling, case, outfile, decoder = 'bayesian'):
         for k,v in case.items():
             print(f"# {k} : {v}", file = ofile)
         print(f"# DECODER {decoder}", file = ofile)
+        print(f"# M_sampling {system.N_trial}", file = ofile)
+        
         np.savetxt(ofile, theta_sampling)
         print("Saved theta sampling in ", outfile)
     
     return
 
-def get_filtered_R(theta, MSE1, MSE2):
+def get_filtered_R(theta, MSE1, MSE2,w1 = 3, w2 = 3, w3 = 3):
     # from scipy.interpolate import splrep, BSpline
-    y = circular_moving_average(theta,MSE1, 5)
+    """
+    y = circular_moving_average(theta,MSE1, 3)
     y = circular_moving_average(theta,y, 5)
 
     y_control = circular_moving_average(THETA, MSE2,5)
     y_control = circular_moving_average(THETA, y_control,5)
     
     R = (1 - (y/y_control))*100
+    """
+    y = circular_moving_average(theta,MSE1, w1) if w1 != 1 else MSE1
+    y_control = circular_moving_average(THETA, MSE2,w2) if w2 != 1 else MSE2
+
+    R = (1- (y/y_control))*100
+    
+    R = circular_moving_average(THETA, R,w3) if w3 != 1 else R
     # tck_s = splrep(x, R, s=len(x)-10)
     # R=BSpline(*tck_s)(theta)
     return R
@@ -256,8 +266,8 @@ if __name__ == '__main__':
     
     # Plot Decoder Error Analysis (Correlated system)
     title = r"$N_{sampling}$" + f': {system.N_trial} ' + r"$\rho_{N}: $" + f"{system.rho:.2}" if not callable(system.rho) else \
-            r"$N_{sampling}$" + f': {system.N_trial} ' + r"$\rho_{N}: $" + "STIM. DEPENDENT" 
-    plot_theta_error(THETA, theta_sampling, 2*MSE, FI = FI, title = title, outdir = outdir)
+            r"$N_{sampling}$" + f': {system.N_trial} ' + r"$\rho_{N}: $" + f"{system.alpha:.2}"
+    plot_theta_error(THETA, theta_sampling, 2*MSE, FI = FI if args.noise != 'poisson' else None, title = title, outdir = outdir)
     
     # Plot Histograms
     # plot_theta_ext_prob(THETA, theta_sampling, outdir = outdir)
@@ -284,7 +294,7 @@ if __name__ == '__main__':
     control_FI  = np.array(list(map(system.linear_fisher, THETA)))
     
     # Plot Decoder Error Analysis (Indipendent system)
-    plot_theta_error(THETA, control_theta_sampling, 2*control_MSE, FI = control_FI,
+    plot_theta_error(THETA, control_theta_sampling, 2*control_MSE, FI = control_FI if args.noise != 'poisson' else None,
                      title = r"$N_{sampling}$" + f': {system.N_trial}', outdir = outdir, filename = 'control_MSE.png')
 
     # Reload system params

@@ -24,7 +24,6 @@ def make_segments(x, y):
     segments = np.concatenate([points[:-1], points[1:]], axis=1)
     return segments
 
-
 def plot_simulation( system, stimolus, plot_gradient = False, E = None, 
                     outdir = None, color_label = '', cmap = 'coolwarm'):
     
@@ -122,9 +121,8 @@ def plot_simulation( system, stimolus, plot_gradient = False, E = None,
     
     return 
 
-
 def plot_simulation_single_panel( system, stimolus, plot_gradient = False, E = None, 
-                    outdir = None, color_label = '', Emin = -7, Emax = 7):
+                    outdir = None, color_label = '', Emin = -7, Emax = 7 , cmap = 'coolwarm'):
     
     markers = ['o','+','s','^','*','v']
         
@@ -154,7 +152,6 @@ def plot_simulation_single_panel( system, stimolus, plot_gradient = False, E = N
     mu2 = list( map( system.mu[1], THETA))
     
     if E is not None:
-        cmap='jet'
         # Emin = E.min()
         # Emax = np.percentile(E,90)
 
@@ -164,7 +161,7 @@ def plot_simulation_single_panel( system, stimolus, plot_gradient = False, E = N
         norm=plt.Normalize(Emin, Emax)
         segments = make_segments(mu1, mu2)
         lc = mcoll.LineCollection(segments, array=E, cmap=cmap , norm=norm,
-                                  linewidth=5, alpha=1)
+                                  linewidth=8, alpha=1)
 
         ax.add_collection(lc)
         cm = fig.colorbar(lc,ax=ax)
@@ -248,34 +245,34 @@ def plot_theta_error(theta, theta_sampling, MSE , title = ' ',
     axs[0].legend(loc='upper left')
     
     av_theta = theta_sampling.mean( axis = 1 )
-    bias = av_theta - theta
+    bias = theta - av_theta
     
     error = np.array([ x - theta for x in theta_sampling.transpose()]) 
     tan_error = np.arctan2( np.sin(error), np.cos(error))
     MSE = np.sqrt(circmean(tan_error**2,axis=0))
-    MSE = circular_moving_average(THETA,MSE,7) 
+    MSE = circular_moving_average(THETA,MSE,3) 
     
     f  = lambda x : np.interp(x, theta, bias)
     db = lambda x : derivative(f, x, dx=1e-3)
     
-    bias_prime = circular_moving_average(THETA, db(THETA), 5)
+    bias_prime = circular_moving_average(THETA, db(THETA), 3)
     
-    N = (1 + bias_prime)**2
-    Biased_CRB = (N/FI) + (bias)**2
-    Biased_CRB = circular_moving_average(theta, Biased_CRB, 3)
-    #Biased_CRB = circular_moving_average(theta, Biased_CRB, 11)
     
-    ymin = min(MSE.min() - 0.05, min(1/FI) - 0.05, min(Biased_CRB) - 0.05)
-    ymin = max(ymin,0)
-    ymax = MSE.max() + 0.1
-    ymax = 0.1
+    ymin = 0
+    ymax = 0.125
     
     if FI is not None:
+        N = (1 - bias_prime)**2
+        Biased_CRB = (N/FI) + (bias)**2
+        Biased_CRB = circular_moving_average(theta, Biased_CRB, 3)
+        Biased_CRB = circular_moving_average(theta, Biased_CRB, 3)
+
+
         axs[0].plot(theta, 1/FI, label = 'Unbiased CRB',c='grey', ls ='--', zorder = 1,alpha=0.7)
         axs[0].plot(theta, Biased_CRB , label = 'Biased CRB',c='black',alpha=0.7, zorder = 1)
         axs[0].set_ylim(ymin, ymax)
 
-    axs[0].legend(loc = 'upper center')
+    axs[0].legend(loc = 'upper right')
     axs[0].set_ylim(ymin, ymax)
         
     axs[1].plot(theta, bias, c = 'red')
@@ -383,11 +380,11 @@ def plot_improvement(theta, R, angles = None, outdir = None, raw_MSE1 = None, ra
     plt.axhline(0,lw=0.5,c='grey')
     
     if raw_MSE1 is not None and raw_MSE2 is not None:
-        from decoder import moving_average
-        x,y     = moving_average(theta, raw_MSE1, 7)
-        x_2,y_2 = moving_average(theta, raw_MSE2, 7)
+        from decoder import circular_moving_average
+        y     = circular_moving_average(theta, raw_MSE1, 7)
+        y_2   = circular_moving_average(theta, raw_MSE2, 7)
         raw_R = (1 - y/y_2)*100
-        plt.plot(x, raw_R,label='Unfiltered',lw = 0.4,zorder = 1,c='red')
+        plt.plot(THETA, raw_R,label='Unfiltered',lw = 0.4,zorder = 1,c='red')
         plt.legend(prop={'size':17})
         
     if outdir is not None:
@@ -448,7 +445,7 @@ def plot_heatmap(theta_sampling, theta_sampling_control,
     for i,n in enumerate(norm):
         heatmap[:,i] /= n
             
-    plt.imshow(heatmap*100,cmap=cmap,vmin=0,vmax=VMAX)
+    plt.imshow(heatmap*100,cmap=cmap,vmin=0,vmax=VMAX, origin = 'upper')
     cb=plt.colorbar()
     cb.set_label(label = 'Bin Accuracy [%]', size = 13)
     
@@ -472,10 +469,10 @@ def plot_heatmap(theta_sampling, theta_sampling_control,
         plt.savefig(outfile,bbox_inches='tight',dpi=300)
         print("Heatmap saved in ",outfile)
 
-
     heatmap_control = np.zeros((nbins,nbins))
     for i,sample in enumerate(theta_sampling_control.transpose()):    
         heatmap_control += np.histogram2d(THETA, sample, bins = bins)[0]
+        
     heatmap_control /= N
     norm = heatmap_control.sum(axis=0)
     for i,n in enumerate(norm):
@@ -486,7 +483,7 @@ def plot_heatmap(theta_sampling, theta_sampling_control,
     plt.clf()
     plt.figure()
     plt.title("INDEPENDENT SYSTEM",size = 20)
-    plt.imshow(heatmap_control*100,cmap=cmap,vmin=0,vmax=VMAX)
+    plt.imshow(heatmap_control*100,cmap=cmap,vmin=0,vmax=VMAX, origin = 'upper')
     cb=plt.colorbar()
     cb.set_label(label = 'Bin Accuracy [%]', size = 13)
     tick_labels = [ str(int(x))+'°' for x in (ticks+0.5)*360/nbins ]
@@ -509,7 +506,7 @@ def plot_heatmap(theta_sampling, theta_sampling_control,
     plt.yticks(ticks,labels=tick_labels)
     plt.xticks(ticks,labels=tick_labels)
     plt.xlim(-0.5,nbins-0.5)
-    IMP_MAX = 5
+    IMP_MAX = 3
     IMP_MIN = -IMP_MAX
     plt.ylim(-0.5,nbins-0.5)
     IMP = (heatmap - heatmap_control)
@@ -527,10 +524,7 @@ def plot_heatmap(theta_sampling, theta_sampling_control,
         plt.savefig(imp_outfile,bbox_inches='tight',dpi=300)
         print("Difference heatmap saved in ",imp_outfile)
 
-    
     return heatmap, IMP
-
-
 
 def plot_fisher_experiment(systemA, systemB, samplingA, samplingB, MSEA,MSEB):
     
@@ -621,11 +615,11 @@ def plot_all_cases(system, R_list, outfile = None):
 
             fig, ax = plt.subplots(1,1,figsize=(10,10))
             lc = mcoll.LineCollection(segments, array=R, cmap=cmap , norm=norm,
-                                  linewidth=4, alpha=1)
+                                  linewidth=8, alpha=1)
     
             ax.add_collection(lc)
             cm = fig.colorbar(lc,ax=ax)
-            cm.set_label("Improvement [%]", size = 10, weight = 'bold')    
+            cm.set_label("Improvement [%]", size = 14, weight = 'bold')    
             ax.plot()
             
             plt.savefig( single_file , dpi = 200)
