@@ -90,10 +90,13 @@ def convert_fit_param( params ):
         
     return out
 
-def compute_corr_matrix( vector , rho, var1, var2):
+
+             
+             
+def compute_corr_matrix( vector , eigenvalues):
     w = np.array([-vector[1],vector[0]])
     v = vector
-    return np.eye(vector.size) + (1+rho)*(  np.outer(v,v)/v.dot(v) - np.outer(w,w)/w.dot(w) )
+    return max(eigenvalues)*np.outer(v,v)/v.dot(v) - min(eigenvalues)*np.outer(w,w)/w.dot(w)
 
 class NeuralSystem(object):
     
@@ -159,17 +162,14 @@ class NeuralSystem(object):
 
                 
             #C = lambda x : compute_corr_matrix(np.ones(D), self.alpha)
-            C = np.array( [[1,self.alpha],[self.alpha, 1]])
             if self.corr_stim_dependence:
-                # Case with stim-dependent Variance BUT fixed correation
-                alpha = lambda x : np.pi/4 - np.arctan2( self.grad[1](x),self.grad[0](x))
-                R     = lambda x : np.array([[np.cos(alpha(x)), -np.sin(alpha(x))],
-                                             [np.sin(alpha(x)),np.cos(alpha(x))]])
-                self.old_sigma = lambda x: V(x).dot(C).dot(V(x))
-                self.sigma     = lambda x : R(x).dot(self.old_sigma(x)).dot(R(x).transpose())
-                print("here")
-            else:
                 # Case with stim-dependent Variance AND correation
+                grad = lambda  x :np.array([self.grad[0](x), self.grad[1](x)]) 
+                self.sigma     = lambda x : compute_corr_matrix(  grad(x), # Direction Max Eigenvector
+                                                                  self.compute_eigenvalues( [self.mu[0](x), self.mu[1](x)]) )
+            else:
+                # Case with stim-dependent Variance BUT fixed correation
+                C = np.array( [[1,self.alpha],[self.alpha, 1]])
                 self.sigma = lambda x : V(x).dot(C).dot(V(x))
                             
         else:
@@ -236,6 +236,12 @@ class NeuralSystem(object):
          covar   = np.sum( (  system.mu[0](x) - mu1bar )*( system.mu[1](x) - mu2bar)) / n 
          
          return covar/(mu1_std*mu2_std)
+
+    def compute_eigenvalues(self, mu ):
+        mu_sum = sum(mu)
+        mu_prod = np.prod( mu )
+        return   self.beta*0.5 * ( mu_sum + np.sqrt( mu_sum**2 - 4*mu_prod*(1-self.alpha**2)  )  ),\
+                 self.beta*0.5 * ( mu_sum - np.sqrt( mu_sum**2 - 4*mu_prod*(1-self.alpha**2)  )  )
 
 if __name__ == '__main__':
     from plot_tools import plot_simulation
