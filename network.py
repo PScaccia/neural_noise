@@ -12,7 +12,6 @@ from scipy.misc import derivative
 
 THETA = np.linspace(0, 2*np.pi, 180)
 
-
 def generate_tuning_curve_from_fit(fit):    
     # Parametri in ordine di apparenza: 
     #     area (A)
@@ -91,10 +90,10 @@ def convert_fit_param( params ):
         
     return out
 
-def compute_corr_matrix( vector , rho):
+def compute_corr_matrix( vector , rho, var1, var2):
     w = np.array([-vector[1],vector[0]])
     v = vector
-    return np.eye(vector.size) + rho*(  np.outer(v,v)/v.dot(v) - np.outer(w,w)/w.dot(w) )
+    return np.eye(vector.size) + (1+rho)*(  np.outer(v,v)/v.dot(v) - np.outer(w,w)/w.dot(w) )
 
 class NeuralSystem(object):
     
@@ -157,16 +156,22 @@ class NeuralSystem(object):
         if self.var_stim_dependence:
             V = lambda x : np.array( [[np.sqrt(self.beta*self.mu[0](x)), 0], 
                                       [0, np.sqrt(self.beta*self.mu[1](x))]])
-            
-            if self.corr_stim_dependence:
-                # Case with stim-dependent Variance AND correation
-                C = lambda x : compute_corr_matrix(np.array( [self.grad[0](x), self.grad[1](x)]), self.alpha)
-            else:
-                # Case with stim-dependent Variance BUT fixed correation
-                C = lambda x : compute_corr_matrix(np.ones(D), self.alpha)
+
                 
-            self.sigma = lambda x : V(x).dot(C(x)).dot(V(x))
-            
+            #C = lambda x : compute_corr_matrix(np.ones(D), self.alpha)
+            C = np.array( [[1,self.alpha],[self.alpha, 1]])
+            if self.corr_stim_dependence:
+                # Case with stim-dependent Variance BUT fixed correation
+                alpha = lambda x : np.pi/4 - np.arctan2( self.grad[1](x),self.grad[0](x))
+                R     = lambda x : np.array([[np.cos(alpha(x)), -np.sin(alpha(x))],
+                                             [np.sin(alpha(x)),np.cos(alpha(x))]])
+                self.old_sigma = lambda x: V(x).dot(C).dot(V(x))
+                self.sigma     = lambda x : R(x).dot(self.old_sigma(x)).dot(R(x).transpose())
+                print("here")
+            else:
+                # Case with stim-dependent Variance AND correation
+                self.sigma = lambda x : V(x).dot(C).dot(V(x))
+                            
         else:
             # Case with stim-independent Matrix
             self.sigma = lambda x : self.V*np.array( [[1, self.rho], [self.rho, 1]])
