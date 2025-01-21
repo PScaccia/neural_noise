@@ -40,9 +40,10 @@ def circular_moving_average(x,y,w):
     
     return out[1]
     
-
+def simmetrize_curve( curve, center, copy_right = True):    
+    return  np.append( curve[91:-1][::-1], curve[88:])
+    
 def bayesian_decoder(system, r, theta, N_step = 600):
-    from scipy.optimize import minimize_scalar
     
     # Define Integral Parameters
     theta_support = np.linspace(THETA[0], THETA[-1],N_step)
@@ -55,12 +56,13 @@ def bayesian_decoder(system, r, theta, N_step = 600):
         norm_factor = dtheta / (2*np.pi)
         
     mu_vect          = lambda x :  np.array([system.mu[0](x),system.mu[1](x)]) 
-    cost_function    = lambda x : (  r - mu_vect(x) ).transpose().dot( system.inv_sigma(x) ).dot( r - mu_vect(x) )    
     
     if not callable(system.rho):
-        P_post           = lambda x : np.exp(-0.5*cost_function(x))
+        cost_function    = lambda x : (  r - mu_vect(x) ).transpose().dot( system.inv_sigma(x) ).dot( r - mu_vect(x) )
     else:
-        P_post           = lambda x : np.exp(-0.5*cost_function(x)) / np.sqrt(np.linalg.det(system.sigma(x)))
+        cost_function    = lambda x : (  r - mu_vect(x) ).transpose().dot( system.inv_sigma(x) ).dot( r - mu_vect(x) ) + abs(np.log(np.linalg.det(system.sigma(x))))   
+
+    P_post           = lambda x : np.exp(-0.5*cost_function(x))
     
     # Define Integrand Functions
     P_post_sin = lambda x : P_post(x)*np.sin(x)
@@ -92,13 +94,14 @@ def MAP_decoder(system, r):
 #    return (minimize_scalar(cost_function, bounds = [THETA[0], THETA[-1]]).x)
 
 
-def sample_theta_ext(system, theta_array, decoder = 'bayesian', N_step = 600, 
+def sample_theta_ext(system, theta_array, decoder = 'bayesian', N_step = 500, 
                      multi_thread = False, num_thread = 5):
 
     theta_ext_sampling = np.empty( ( len(theta_array), system.N_trial ) )*np.nan
 
     if multi_thread is False:            
         for i,theta in zip(tqdm(range(len(theta_array)), desc = 'Computing decoding error: ' ), theta_array):
+            print(theta)
             r_sampling = system.neurons(theta)
             if decoder == 'bayesian':
                 decoder_f = lambda r: bayesian_decoder(system, r, theta, N_step = N_step)
@@ -204,7 +207,7 @@ def parser():
     parser = argparse.ArgumentParser()
     parser.add_argument('-d','--decoder',type=str,required=False,choices=['bayesian','MAP'],default='bayesian')
     parser.add_argument('--case','-c',type=int,required=False,default=1,help="System Configuration")
-    parser.add_argument('--noise','-n',type=str,required=False,default='constant',choices=['constant','adaptive','poisson'],help="System Configuration")
+    parser.add_argument('--noise','-n',type=str,required=False,default='constant',choices=['constant','adaptive','poisson','experimental'],help="System Configuration")
     parser.add_argument('-N','--n_trials',type=int,required=False,default=1000,help="Numerosity of the sampling")
     parser.add_argument('--n_proc',type=int,required=False,default=5,help="Number of workers")
     parser.add_argument('--multi_thread',action='store_true', default=False,help="Multi-threading")
@@ -213,7 +216,7 @@ def parser():
 
 if __name__ == '__main__':
     from plot_tools import  *
-    from cases import CASES, A_CASES, P_CASES
+    from cases import CASES, A_CASES, P_CASES, E_CASES
     import os
     
     # Parse Arguments
@@ -229,7 +232,12 @@ if __name__ == '__main__':
     N_step  = args.integration_step
     file_ext = '.txt'
     if args.noise != 'constant':
-        CASES = A_CASES if args.noise == 'adaptive' else P_CASES
+        if args.noise == 'adaptive':
+             CASES = A_CASES 
+        elif args.noise == 'experimental' :
+            CASES = E_CASES
+        else:
+            CASES = P_CASES
         outdir = outdir.replace('case',f'{args.noise.upper()}_case')
         file_ext = f'_{args.noise.upper()}' +'.txt'
     sampling_file         = outdir + f'/theta_sampling_case{CASE}' + file_ext
@@ -269,20 +277,16 @@ if __name__ == '__main__':
             r"$N_{sampling}$" + f': {system.N_trial} ' + r"$\rho_{N}: $" + f"{system.alpha:.2}"
     plot_theta_error(THETA, theta_sampling, 2*MSE, FI = FI if args.noise != 'poisson' else None, title = title, outdir = outdir)
     
-    # Plot Histograms
-    # plot_theta_ext_prob(THETA, theta_sampling, outdir = outdir)
-    # os.system(f"convert -delay 5 -loop 0 {outdir}/prob_*.png {outdir}/decoding_prob.gif")
-    # os.system(f"rm {outdir}/prob_*.png")
-    # print(f"Created animation in {outdir}/decoding_prob.gif")
-
     # Simulate decorrelated system
     if os.path.isfile(control_sampling_file):
         control_theta_sampling = np.loadtxt( control_sampling_file )
         print("Loaded control theta sampling from ",control_sampling_file)
     else:
-        system.rho = 0.0 if not callable(system.rho) else lambda x : 0.0
+        system.rho   = 0.0 if not callable(system.rho) else lambda x : 0.0
         system.alpha = 0.0
+        #system.corr_stim_dependence = False
         system.generate_variance_matrix()
+        
         print()
         print("Simulating Indipendent System")
         

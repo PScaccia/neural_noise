@@ -91,12 +91,12 @@ def convert_fit_param( params ):
     return out
 
 
-             
-             
 def compute_corr_matrix( vector , eigenvalues):
-    w = np.array([-vector[1],vector[0]])
-    v = vector
-    return max(eigenvalues)*np.outer(v,v)/v.dot(v) - min(eigenvalues)*np.outer(w,w)/w.dot(w)
+    v = vector/np.linalg.norm(vector)
+    w = np.array([-v[1],v[0]])
+    a = max(eigenvalues)
+    b = min(eigenvalues)
+    return a*np.outer(v,v) + b*np.outer(w,w)
 
 class NeuralSystem(object):
     
@@ -111,8 +111,9 @@ class NeuralSystem(object):
         for k,i in parameters.items():
             self.__dict__[k] = i
         self.N_trial    = int(N_trial)
-        self.var_stim_dependence  = True if self.rho in ['adaptive','poisson'] else False
-        self.corr_stim_dependence = True if self.rho == 'adaptive' else False
+        self.var_stim_dependence  = True if self.rho in ['adaptive','poisson','experimental'] else False
+        self.corr_stim_dependence = True if self.rho in ['adaptive','experimental'] else False
+        self.mode = self.rho
         
         # Define tuning curves and their gradients
         self.mu         = [ generate_tuning_curve( width  = self.width,
@@ -132,8 +133,8 @@ class NeuralSystem(object):
                                           A = self.A, function = self.function,
                                           flatness = self.flatness) ]
 
-        if self.rho in ['adaptive','poisson']:
-            self.update_rho( self.rho )
+        if self.rho in ['adaptive','poisson','experimental']:
+            self.update_rho( self.mode )
             
         # Define Covariance Matrix
         self.generate_variance_matrix()
@@ -163,11 +164,22 @@ class NeuralSystem(object):
                 
             #C = lambda x : compute_corr_matrix(np.ones(D), self.alpha)
             if self.corr_stim_dependence:
-                # Case with stim-dependent Variance AND correation
-                grad = lambda  x :np.array([self.grad[0](x), self.grad[1](x)]) 
-                self.sigma     = lambda x : compute_corr_matrix(  grad(x), # Direction Max Eigenvector
-                                                                  self.compute_eigenvalues( [self.mu[0](x), self.mu[1](x)]) )
+                
+                if self.mode == 'adaptive':
+                   # Case with stim-dependent Variance AND correation
+                   grad = lambda  x : np.array([self.grad[0](x), self.grad[1](x)]) 
+                   self.sigma     = lambda x : compute_corr_matrix(  grad(x),  # Direction Max Eigenvector
+                                                                     self.compute_eigenvalues( [ self.mu[0](x), self.mu[1](x)] ),
+                                                                     )
+                elif self.mode == 'experimental':
+                    # Case with stim-dependent Variance AND EXPERIMENTAL correation
+                    C =lambda x:  np.array( [[1, self.rho(x)],[self.rho(x), 1]])
+                    self.sigma = lambda x : V(x).dot(C(x)).dot(V(x))
+                else:
+                   sys.exit("Wrong correlation mode")    
+
             else:
+                print('here')
                 # Case with stim-dependent Variance BUT fixed correation
                 C = np.array( [[1,self.alpha],[self.alpha, 1]])
                 self.sigma = lambda x : V(x).dot(C).dot(V(x))
@@ -184,6 +196,13 @@ class NeuralSystem(object):
             self.rho = lambda x : self.alpha + x - x
         elif mode == 'poisson':
             self.rho = lambda x : self.alpha + x - x
+        elif mode == 'experimental': 
+            # from cases import EXPERIMENT_FIT, FIT_PARAMS
+            # self.rho = lambda x : EXPERIMENT_FIT(x, *FIT_PARAMS)
+            import pickle
+            with open("experimental_rho.pkl","rb") as ofile:
+                    self.experimental_rho = pickle.load(ofile)
+                    self.rho = lambda x : np.interp(x, THETA, self.experimental_rho)
         else:
             sys.exit("Unknown correlation type!")
         
@@ -240,8 +259,10 @@ class NeuralSystem(object):
     def compute_eigenvalues(self, mu ):
         mu_sum = sum(mu)
         mu_prod = np.prod( mu )
-        return   self.beta*0.5 * ( mu_sum + np.sqrt( mu_sum**2 - 4*mu_prod*(1-self.alpha**2)  )  ),\
-                 self.beta*0.5 * ( mu_sum - np.sqrt( mu_sum**2 - 4*mu_prod*(1-self.alpha**2)  )  )
+        delta = mu_sum**2 - 4*mu_prod*(1-self.alpha**2)
+        delta = abs(delta)
+        return   self.beta*0.5 * ( mu_sum + np.sqrt(  delta )  ),\
+                 self.beta*0.5 * ( mu_sum - np.sqrt( delta  )  )
 
 if __name__ == '__main__':
     from plot_tools import plot_simulation

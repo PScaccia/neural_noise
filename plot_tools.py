@@ -161,7 +161,7 @@ def plot_simulation_single_panel( system, stimolus, plot_gradient = False, E = N
         norm=plt.Normalize(Emin, Emax)
         segments = make_segments(mu1, mu2)
         lc = mcoll.LineCollection(segments, array=E, cmap=cmap , norm=norm,
-                                  linewidth=8, alpha=1)
+                                  linewidth=12, alpha=1)
 
         ax.add_collection(lc)
         cm = fig.colorbar(lc,ax=ax)
@@ -194,10 +194,14 @@ def plot_simulation_single_panel( system, stimolus, plot_gradient = False, E = N
         xmin = min(-n_sigma*s//4, min(mu1))
         ymin = min(-n_sigma*s//4, min(mu2))
     else:
-        xmax = max(mu1) + 5
-        xmin = min(mu1) - 5
-        ymax = max(mu2) + 5
-        ymin = min(mu2) - 5
+        # xmax = max(mu1) + 5
+        # xmin = min(mu1) - 5
+        # ymax = max(mu2) + 5
+        # ymin = min(mu2) - 5
+        xmax = 12.5
+        xmin = 0
+        ymax = 12.5
+        ymin = 0
     
     ax.set_xlim(xmin, xmax)
     ax.set_ylim(ymin, ymax)
