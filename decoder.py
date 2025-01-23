@@ -95,13 +95,12 @@ def MAP_decoder(system, r):
 
 
 def sample_theta_ext(system, theta_array, decoder = 'bayesian', N_step = 500, 
-                     multi_thread = False, num_thread = 5):
+                     multi_thread = False, num_threads = 5):
 
     theta_ext_sampling = np.empty( ( len(theta_array), system.N_trial ) )*np.nan
 
     if multi_thread is False:            
         for i,theta in zip(tqdm(range(len(theta_array)), desc = 'Computing decoding error: ' ), theta_array):
-            print(theta)
             r_sampling = system.neurons(theta)
             if decoder == 'bayesian':
                 decoder_f = lambda r: bayesian_decoder(system, r, theta, N_step = N_step)
@@ -114,15 +113,15 @@ def sample_theta_ext(system, theta_array, decoder = 'bayesian', N_step = 500,
         # Multi Thread !!!
         from multiprocess import Pool
 
-        num_threads = num_thread
-
-        if len(theta_array)%num_threads != 0:
-            sys.exit(f"Num. worker should be a divisor of the input size ({len(theta_array)})")
+        if system.N_trial % num_threads != 0:
+            sys.exit(f"Num. worker should be a divisor of the sampling size ({system.N_trial})")
             
-        def get_single_theta_sample( input_array ):
-            _tmp = np.empty( ( len(input_array), system.N_trial ) )*np.nan
+        def get_single_theta_sample( input_array, n):
+            n = int(n)
+            _tmp = np.empty( ( len(input_array), n ) )*np.nan
             for i,theta in zip(tqdm(range(len(input_array)), desc = 'Computing decoding error: ' ), input_array):
-                r_sampling = system.neurons(theta)    
+                r_sampling = system.neurons(theta)[:n,:]
+
                 if decoder == 'bayesian':
                     decoder_f = lambda r: bayesian_decoder(system, r, theta, N_step = N_step)
                 elif decoder == 'MAP':
@@ -131,28 +130,20 @@ def sample_theta_ext(system, theta_array, decoder = 'bayesian', N_step = 500,
                     sys.exit("Not implemented yet!")
                 _tmp[i,:] = list(map(decoder_f,r_sampling))
             return _tmp
+        N = system.N_trial//num_threads
 
-        pool = Pool(processes = num_threads)        
-        inputs = theta_array.reshape(num_thread, len(theta_array)//num_thread)
-        sorted_results = pool.map( get_single_theta_sample,\
-                                       inputs )
-        theta_ext_sampling = np.vstack(np.array(sorted_results))
-
-        # cloud_frac_batches, n_pixels_batches = [ o[0] for o in output], [ o[1] for o in output]
-        # pool.close()
-
-        # with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
-        #     # Esegui la funzione f() in parallelo con input diversi
-        #     futures = {executor.submit(get_sample, x): x for x in inputs}
-                
-        #     # Gather results
-        #     results = [ (future.result(), futures[future]) for future in concurrent.futures.as_completed(futures)]
-        #     t
-        #     # Order results
-        #     sorted_results = list(map( lambda x: x[0], sorted(results, key=lambda x: x[1][0])))
- 
-        #     theta_ext_sampling = np.vstack(np.array(sorted_results))
-            
+        # with Pool(num_threads) as pool:
+        with Pool(num_threads) as pool:
+            for i,results in enumerate(pool.starmap( 
+                                        get_single_theta_sample,\
+                                        zip( theta_array.repeat(num_threads).reshape(theta_array.size,num_threads).transpose(),
+                                             np.ones(num_threads)*N ) 
+                                          )):
+               if i==0:
+                   theta_ext_sampling = results
+               else:
+                   theta_ext_sampling = np.hstack( (theta_ext_sampling,results ))
+                          
     return theta_ext_sampling
 
 def compute_MSE(theta_sampling, mode = 'cos', theta = THETA):
@@ -266,7 +257,7 @@ if __name__ == '__main__':
         theta_sampling = np.loadtxt( sampling_file )
         print("Loaded theta sampling from ",sampling_file)
     else:
-        theta_sampling = sample_theta_ext( system, THETA, decoder = DECODER, N_step = N_step,  multi_thread = args.multi_thread, num_thread=args.n_proc)
+        theta_sampling = sample_theta_ext( system, THETA, decoder = DECODER, N_step = N_step,  multi_thread = args.multi_thread, num_threads=args.n_proc)
         if save_theta_sampling: save_sampling(system, theta_sampling,  CASES[CASE], sampling_file)
         
     MSE = compute_MSE(theta_sampling)
@@ -290,7 +281,7 @@ if __name__ == '__main__':
         print()
         print("Simulating Indipendent System")
         
-        control_theta_sampling = sample_theta_ext( system, THETA, decoder = DECODER , N_step = N_step, multi_thread = args.multi_thread, num_thread=args.n_proc)
+        control_theta_sampling = sample_theta_ext( system, THETA, decoder = DECODER , N_step = N_step, multi_thread = args.multi_thread, num_threads=args.n_proc)
         if save_theta_sampling: save_sampling(system, control_theta_sampling,  CASES[CASE], control_sampling_file)
 
     # Compute Decoder MSE (Indipendent system)        
