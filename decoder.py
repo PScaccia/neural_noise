@@ -9,9 +9,10 @@ Created on Tue Oct  8 16:59:34 2024
 import numpy as np
 import sys, os
 import subprocess
-from network import NeuralSystem, THETA
-from tqdm import tqdm
-
+from   network import NeuralSystem, THETA
+from   tqdm import tqdm
+import scipy
+from   utils.stat_tools import compute_MSE
 
 HOMEDIR = subprocess.check_output("echo $HOME", shell=True, text=True).replace('\n','')
 
@@ -68,12 +69,19 @@ def bayesian_decoder(system, r, theta, N_step = 600):
     P_post_sin = lambda x : P_post(x)*np.sin(x)
     P_post_cos = lambda x : P_post(x)*np.cos(x)
     
-    # Integrate 
-    sin = np.sum( list(map(P_post_sin, theta_support)))
-    cos = np.sum( list(map(P_post_cos, theta_support)))
+    # Integrate Naiv Algorithm
+    # sin = np.sum( list(map(P_post_sin, theta_support)))
+    # cos = np.sum( list(map(P_post_cos, theta_support)))    
+    # sin *= norm_factor
+    # cos *= norm_factor
 
-    sin *= norm_factor
-    cos *= norm_factor
+    # Integrate via Simpson's rule
+    sin = scipy.integrate.simpson(list(map(P_post_sin, theta_support)), dx = 1)
+    cos = scipy.integrate.simpson(list(map(P_post_cos, theta_support)), dx = 1)
+    
+    # Integrate via Quadrate Method
+    # sin,_ = scipy.integrate.quad(P_post_sin, 0, 2*np.pi)
+    # cos,_ = scipy.integrate.quad(P_post_cos, 0, 2*np.pi)
     
     extimate = np.arctan2(sin, cos)
     
@@ -146,16 +154,6 @@ def sample_theta_ext(system, theta_array, decoder = 'bayesian', N_step = 500,
                           
     return theta_ext_sampling
 
-def compute_MSE(theta_sampling, mode = 'cos', theta = THETA):
-    if mode == 'cos':
-        error = np.array([  1 - np.cos(t - theta_sampling[i,:] )  for i,t in enumerate(theta) ])
-        return np.mean( error, axis = 1)
-    elif mode == 'mse':
-        from scipy.stats import circmean
-        error = np.array([ x - theta for x in theta_sampling.transpose()]) 
-        tan_error = np.arctan2( np.sin(error), np.cos(error))
-        MSE = np.sqrt(circmean(tan_error**2,axis=0))
-        return MSE
 
 def save_sampling(system, theta_sampling, case, outfile, decoder = 'bayesian'):
     with open(outfile,"w") as ofile:
@@ -241,7 +239,7 @@ if __name__ == '__main__':
     print("OUTDIR:       ",outdir)
     print("N TRIALS:     ",N_trial)
     print("MULTI-THREAD: ",args.multi_thread)
-    print()    
+    print()
 
     if not os.path.isdir(outdir):
         os.system(f"mkdir -p {outdir}")

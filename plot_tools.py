@@ -122,23 +122,24 @@ def plot_simulation( system, stimolus, plot_gradient = False, E = None,
     return 
 
 def plot_simulation_single_panel( system, stimolus, plot_gradient = False, E = None, 
-                    outdir = None, color_label = '', Emin = -7, Emax = 7 , cmap = 'coolwarm'):
+                    outdir = None, color_label = '', Emin = -5, Emax = 5 , cmap = 'coolwarm',
+                    fig_size = (12,12), xmax = 18, theta_support = THETA):
     
     markers = ['o','+','s','^','*','v']
         
-    fig, ax = plt.subplots(1,1,figsize = (12,12))
+    fig, ax = plt.subplots(1,1,figsize = fig_size)
     
     # Plot Trials per Stimolous
     for i,t in enumerate(stimolus):
         data = system.neurons(t)
         j = i%len(markers)
-        ax.scatter(data[:,0],data[:,1],
+        ax.scatter( data[:,0],data[:,1],
                     alpha=0.5,
                     marker=markers[ j ],
                     label = r"$\theta$ = {:.1f}°".format( np.rad2deg(t) ) 
                     )
         ax.scatter(data[:,0].mean(), data[:,1].mean(),
-                       marker = 'x',c='red',s=55, zorder = 13)
+                   marker = 'x',c='red',s=55, zorder = 13)
         if plot_gradient:
             # Plot Derivatives
             x,y  = [ f(t) for f in system.mu]
@@ -148,25 +149,29 @@ def plot_simulation_single_panel( system, stimolus, plot_gradient = False, E = N
             ax.arrow( x,y, dx, dy, color = 'black', zorder = 13, head_width = .15)
                      
     # Plot Signal Manifold
-    mu1 = list( map( system.mu[0], THETA))
-    mu2 = list( map( system.mu[1], THETA))
+    mu1 = list( map( system.mu[0], theta_support))
+    mu2 = list( map( system.mu[1], theta_support))
     
     if E is not None:
         # Emin = E.min()
         # Emax = np.percentile(E,90)
 
-        Emin = Emin
+        Emin =  Emin
         Emax =  Emax
-        
+            
+
         norm=plt.Normalize(Emin, Emax)
         segments = make_segments(mu1, mu2)
+        if E.size != len(segments)+1: 
+            print("Warning! Color array has different size then segments' array")
+        
         lc = mcoll.LineCollection(segments, array=E, cmap=cmap , norm=norm,
-                                  linewidth=12, alpha=1)
+                                  linewidth=20, alpha=1,antialiaseds=True)
 
         ax.add_collection(lc)
-        cm = fig.colorbar(lc,ax=ax)
-        cm.set_label(color_label, size = 20, weight = 'bold')
-
+        cm = fig.colorbar(lc, ax = ax)
+        cm.set_label(color_label, size = 30, weight = 'bold')
+        cm.ax.tick_params(labelsize=30)
         """
         for i,mu1,mu2 in zip( range(theta.size), mu1, list( map( system.mu[1], theta)) ):
             d=axs[0].scatter( mu1, 
@@ -177,10 +182,10 @@ def plot_simulation_single_panel( system, stimolus, plot_gradient = False, E = N
         cb.
         """
     else:
-        ax.plot( list( map( system.mu[0], THETA)), 
-                 list( map( system.mu[1], THETA)), 
+        ax.plot( list( map( system.mu[0], theta_support)), 
+                 list( map( system.mu[1], theta_support)), 
                      color = 'black',
-                     lw = 3 )
+                     lw = 10 )
     
     try:
         s = np.sqrt(system.V)
@@ -193,23 +198,40 @@ def plot_simulation_single_panel( system, stimolus, plot_gradient = False, E = N
         ymax = max(n_sigma*s,  max(mu2))
         xmin = min(-n_sigma*s//4, min(mu1))
         ymin = min(-n_sigma*s//4, min(mu2))
+        
+        
     else:
-        # xmax = max(mu1) + 5
-        # xmin = min(mu1) - 5
-        # ymax = max(mu2) + 5
-        # ymin = min(mu2) - 5
-        xmax = 12.5
-        xmin = 0
-        ymax = 12.5
-        ymin = 0
-    
+        xmax = max(mu1) + 5
+        xmin = min(mu1) - 5
+        ymax = max(mu2) + 5
+        ymin = min(mu2) - 5
+        # xmax = xmax
+        # xmin = 0
+        # ymax = xmax
+        # ymin = 0
+
+    # Tmp    
+    xmax = 22
+    xmin = 0
+    ymax = 22
+    ymin = 0
+
     ax.set_xlim(xmin, xmax)
     ax.set_ylim(ymin, ymax)
-    ax.set_xlabel('Response 1', weight='bold',size=18)
-    ax.set_ylabel('Response 2', weight='bold',size=18)
+    ax.set_xlabel('RESPONSE A', weight='bold',size=40)
+    ax.set_ylabel('RESPONSE B', weight='bold',size=40)
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['left'].set_linewidth(8)
+    ax.spines['bottom'].set_linewidth(8)
+    ax.tick_params(width=5,size=20)
+    plt.xlim(0,xmax)
+    plt.ylim(0,ymax)
+    plt.xticks(size=42)
+    plt.yticks(size=42)
     
-    if len(stimolus) > 0:  ax.legend( title = r'Neural Response at', prop={'size':6})
-    ax.set_title(r"$N_{sampling}$" + f": {system.N_trial}",size=12)
+    # if len(stimolus) > 0:  ax.legend( title = r'Neural Response at', prop={'size':18})
+    # ax.set_title(r"$N_{sampling}$" + f": {system.N_trial}",size=12)
             
     if outdir is not None:
         plt.savefig(outdir + '/simulation.png',bbox_inches='tight',dpi=300)
@@ -313,15 +335,15 @@ def plot_theta_ext_prob(theta, theta_sampling, outdir = './'):
 def plot_gradient_space(system, outfile = None):
     
         
-    def draw_oriented_ellipse(cov_matrix, center, ax):
+    def draw_oriented_ellipse(cov_matrix, center, ax, color, label = ''):
     
         eigenvalues, eigenvectors = np.linalg.eig(cov_matrix)
-        width, height = 2*np.sqrt(eigenvalues)  # Doppio per coprire il 95% dei dati
+        width, height = np.sqrt(eigenvalues)  
         angle = np.arctan2(eigenvectors[1, 0], eigenvectors[0, 0]) * (180 / np.pi)
     
-        ell = plt.matplotlib.patches.Ellipse(center, width, height, angle=angle, color='blue', alpha=0.5)
+        ell = plt.matplotlib.patches.Ellipse(center, width*7, height*7, angle=angle,alpha=0.9,edgecolor=color,facecolor='none',ls='-',lw = 5)
         ax.add_patch(ell)
-        return width/2, height/2, np.deg2rad(angle)
+        return width/2, height/2, np.deg2rad(angle)    
     
     fig,ax = plt.subplots(figsize=(10,10))
     if callable(system.rho):
@@ -330,7 +352,7 @@ def plot_gradient_space(system, outfile = None):
     
     s = np.sqrt(system.V)
 
-    a,b, alpha = draw_oriented_ellipse(system.sigma(0),[0,0], ax)
+    a,b, alpha = draw_oriented_ellipse(system.sigma(0),[0,0], ax, 'blue')
     # alpha += np.pi/2
     plt.plot(s*np.cos(THETA),s*np.sin(THETA),ls='--',c='grey')
 
@@ -631,40 +653,236 @@ def plot_all_cases(system, R_list, outfile = None):
 
     return
 
-def plot_error_distr( error , title = None, outfile = None, bins = 100):
+def plot_error_distr( error, other_errors = [] , label = '', other_labels = [],
+                      title = None, outfile = None, Nbins = 100, logscale = False,
+                      xmax = 2*np.pi, xmin = -2*np.pi, xticks = None, fig_size = (10,10)):
     
     import numpy as np
     import matplotlib.pyplot as plt
     
-    N = bins
-    hist,edges = np.histogram(error, bins = N)
-    
-    bottom = 0
-    max_height = 100
+    fig, ax = plt.subplots(1,1,figsize = fig_size)
 
+    
+    bins = np.linspace(xmin, xmax, Nbins)
+    plt.hist(error, bins = bins, label = label, weights=np.ones(error.size)/error.size)
+    
+    for i,e in enumerate(other_errors):
+        try:
+            label = other_labels[i]
+        except:
+            pass
+        plt.hist(e, bins = bins, label = label,alpha = 0.6, weights=np.ones(error.size)/error.size)
 
-    theta = np.linspace(0.0, 2 * np.pi, N, endpoint=False)
-    width = (2*np.pi) / N
+    plt.axvline(0,c='black', ls ='--')
+    plt.xlabel("DECODING ERROR [°]",weight = 'bold',size = 42)
+    plt.ylabel("PDF",weight = 'bold',size = 42)
     
-    ax = plt.subplot(111, polar=True)
-    bars = ax.bar(theta, hist, width=width, bottom=bottom)
-    
-    # Use custom colors and opacity
-    for r, bar in zip(hist, bars):
-        bar.set_facecolor("maroon")
-        bar.set_alpha(0.8)
-    
-    plt.show()
+    ax = plt.gca()
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    if xticks:
+        plt.xticks(xticks,size=40)
 
-    """
-    plt.hist(error, bins = 100)
-    if title:
-        plt.title(title)
+    #plt.yticks([],size=40)
+    leg = plt.legend( frameon=False, 
+                      prop = {'size' : 30},
+                      bbox_to_anchor = (1.01, 1.0))
+
+    ax.spines['left'].set_linewidth(8)
+    ax.spines['bottom'].set_linewidth(8)
+    ax.set_yticklabels([])
+    
+    if logscale:
+        plt.yticks(xticks,size=40)
+        plt.yscale('log')
+    ax.tick_params(width=5,size=20)
         
+    plt.xlim(xmin,xmax)
+    colors = ['tab:blue','tab:orange']
+    for i, (line, text) in enumerate(zip(leg.get_lines(), leg.get_texts())):
+        text.set_color(colors[i])
+    
     if outfile:
-        plt.savefig(outfile)
+        plt.savefig(outfile, dpi=300,bbox_inches='tight')
         print("Saved plot ",outfile)
     else:
         plt.show()
-    """
+    return
+
+
+
+def paper_plot_figure_2( system, improvement_list = [], file = None, 
+                         OUTDIR = "/home/paolos/Pictures/decoding/paper",
+                         skip_frame = False, skip_cases = False, skip_errors = False):
+    
+    if not skip_frame:
+        plt.figure(figsize=(12,12))
+        ax = plt.subplot(111)
+        plt.xlabel("SNR", weight = 'bold', size = 40)
+        plt.ylabel("NOISE CORRELATION", weight = 'bold', size = 40)
+        ax.spines['left'].set_linewidth(25)
+        ax.spines['bottom'].set_linewidth(25)
+        ax.tick_params(width=5,size=0)
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        
+        plt.xticks([])
+        plt.yticks([])
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['bottom'].set_visible(False)
+        ax.spines['left'].set_visible(False)
+    
+    
+        DX = 2
+        
+        plt.plot( [0-DX,0-DX],         [1.4, 2.5], marker="",ms = 200,c='black', linewidth = 8)
+        plt.plot( [1.4 - DX, 2.5], [0,   0],   marker="",ms = 200,c='black', linewidth = 8)
+        
+        
+        plt.scatter([0],[2.5],marker="^", s = 500,c='black', ls='', linewidth = 600, zorder = 13)
+        plt.scatter([2.5],[0],marker=">", s = 500,c='black', ls = '',linewidth = 600, zorder = 13)
+        
+        # Horizontal Line
+        plt.text(0.9 - DX, -0.08,"LOW", size=28)
+        plt.text(2.65,-0.08,"HIGH", size=28)
+        
+        # Vertical Line
+        plt.text(-0.08,0.87,"LOW", size=28,rotation = 90)
+        plt.text(-0.08,2.75,"HIGH", size=28,rotation = 90)
+        
+        plt.xlim(-0.2-DX,3.5)
+        plt.ylim(-0.2-DX,3.5)
+    
+        OUTFIG = f"{OUTDIR}/figure2_frame.png"
+        plt.savefig(OUTFIG, dpi = 300, bbox_inches = 'tight')
+        print("Saved plot ", OUTFIG)
+    else:
+        pass
+    
+    if not skip_cases:
+        config = {  'rho'           : 'poisson',
+                    'alpha'         : 0.1,
+                    'beta'          : 2.0,
+                    'V'             : 2,
+                    'function'      : 'fvm',
+                    'A'             : 0.17340510276921817,
+                    'width'         : 0.2140327993142855,
+                    'flatness'      : 0.6585904840291591,
+                    'b'             : 1.2731732385019432,
+                    'center'        : 2.9616211149125977 - 0.21264734641020677,
+                    'center_shift'  : np.pi/4,
+                    'N'             : 1000,
+                    'int_step'      : 100
+                    }
+        system = NeuralSystem(config)
+        if len(improvement_list) == 0:
+            sys.exit("Computatation of improvement not implemented yet!")
+        else:
+            for i, color_gradient in enumerate(improvement_list):
+                TARGET_STIM = THETA[52] if i >= 2 else THETA[90]
+
+                plot_simulation_single_panel(system, [], E = color_gradient, 
+                                             color_label = "DECODING IMPROVEMENT [%]",
+                                             fig_size = (10,10))
+                plt.scatter(system.mu[0](TARGET_STIM), 
+                            system.mu[1](TARGET_STIM),
+                            s = 2500, c = 'black',
+                            marker='*', zorder = 13)
+                plt.xticks(np.linspace(0,25,5).astype(int))
+                plt.yticks(np.linspace(0,25,5).astype(int))
+                
+                plt.xlim(0,22)
+                plt.ylim(0,22)
+                
+                OUTFIG = f"{OUTDIR}/figure2_simulation_{i+1}.pdf"
+                plt.savefig( OUTFIG,dpi=300,bbox_inches='tight')
+                print("Saved plot ",OUTFIG)
+                    
+        
+        if file is None:
+            plt.show()
+        else:
+            plt.savefig( file , dpi = 300, bbox_inches = 'tight')
+    else:
+        pass
+        
+    if not skip_errors:
+        plt.clf()
+        
+        # Plot Distributions
+        data = dict(np.load("./data/poisson_selected.npz"))
+        data2 = dict(np.load("./data/poisson_selected_paper.npz"))
+        
+        
+        # CASE1
+        OUTFIG = f"{OUTDIR}/figure2_errors_1.png"
+        theta_sampling = np.hstack((data['a_0.10_b_2.00'][0], data2['a_0.10_b_2.00'][0]))
+        theta_sampling_control = np.hstack((data['a_0.10_b_2.00'][1], data2['a_0.10_b_2.00'][1]))
+        diff = THETA[88] - theta_sampling[88,:]
+        diff_control = THETA[88] - theta_sampling_control[88,:]
+        
+        diff_control[ diff_control > np.pi] = np.pi - diff_control[ diff_control > np.pi]
+        diff_control[ diff_control < -np.pi] = np.pi + diff_control[ diff_control < -np.pi]
+        diff[ diff > np.pi] = np.pi - diff[ diff > np.pi]
+        diff[ diff < -np.pi] = np.pi + diff[diff < -np.pi]
+        plot_error_distr( np.rad2deg(diff), other_errors = [np.rad2deg(diff_control)] , 
+                          # label = 'CORRELATED', other_labels= ['INDEPENDENT'],                          
+                          Nbins = 70,  xmin = -120, xmax = 120,
+                          xticks = [-120,-60,0,60,120], logscale = True,
+                          outfile = OUTFIG)
+        plt.clf()
+
+        # CASE2
+        OUTFIG = f"{OUTDIR}/figure2_errors_2.png"
+        theta_sampling = np.hstack((data['a_0.10_b_0.10'][0], data2['a_0.10_b_0.10'][0]))
+        theta_sampling_control = np.hstack((data['a_0.10_b_0.10'][1], data2['a_0.10_b_0.10'][1]))
+        diff = THETA[90] - theta_sampling[90,:]
+        diff_control = THETA[90] - theta_sampling_control[90,:]
+        
+        diff_control[ diff_control > np.pi] = np.pi - diff_control[ diff_control > np.pi]
+        diff_control[ diff_control < -np.pi] = np.pi + diff_control[ diff_control < -np.pi]
+        diff[ diff > np.pi] = np.pi - diff[ diff > np.pi]
+        diff[ diff < -np.pi] = np.pi + diff[diff < -np.pi]
+        
+        plot_error_distr( np.rad2deg(diff), other_errors = [np.rad2deg(diff_control)] , 
+                          # label = 'CORRELATED', other_labels= ['INDEPENDENT'], 
+                          Nbins = 50,  xmin = -30, xmax = 30,
+                          xticks = [-30,-15,0,15,30], logscale = True,
+                          outfile = OUTFIG)
+        plt.clf()
+
+        # CASE3
+        OUTFIG = f"{OUTDIR}/figure2_errors_3.png"
+        theta_sampling = data['a_0.90_b_2.00'][0]
+        theta_sampling_control = data['a_0.90_b_2.00'][1]
+        diff = THETA[52] - theta_sampling[52,:]
+        diff_control = THETA[52] - theta_sampling_control[52,:]
+        plot_error_distr( np.rad2deg(diff), other_errors = [np.rad2deg(diff_control)] , 
+                          # label = 'CORRELATED', other_labels= ['INDEPENDENT'], 
+                          Nbins = 50, xmax = 45, xmin = -45,
+                          xticks = [-45,-30,-15,0,15,30,45],
+                          outfile = OUTFIG)
+        plt.clf()
+
+        # CASE4
+        OUTFIG = f"{OUTDIR}/figure2_errors_4.png"
+        theta_sampling = theta_sampling = data['a_0.95_b_0.10'][0]
+        theta_sampling_control = data['a_0.95_b_0.10'][1]
+        diff = THETA[52] - theta_sampling[52,:]
+        diff_control = THETA[52] - theta_sampling_control[52,:]
+        plot_error_distr( np.rad2deg(diff), other_errors = [np.rad2deg(diff_control)] , 
+                          # label = 'CORRELATED', other_labels= ['INDEPENDENT'], 
+                          Nbins = 70, xmax = 10, xmin = -10,
+                          xticks = [-10,-5,0,5,10],
+                          outfile = OUTFIG)
+        plt.clf()
+        
+        
+    else:
+        pass
+
+    
+    
+    
     return

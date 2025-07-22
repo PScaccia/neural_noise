@@ -9,8 +9,12 @@ import numpy as np
 import sys
 import progressbar
 from scipy.misc import derivative
+from math import sqrt
+from datetime import datetime
 
 THETA = np.linspace(0, 2*np.pi, 180)
+#THETA = np.linspace(0, 2*np.pi, 360)
+
 
 def generate_tuning_curve_from_fit(fit):    
     # Parametri in ordine di apparenza: 
@@ -34,11 +38,16 @@ def generate_tuning_curve( function = 'fvm_from_fits',
         #flatness = abs(flatness)
         # Readapted according to Carlo's fit
         return lambda x: A*np.exp( (  np.cos(( x - center - flatness*np.sin( x - center) )) )/width )  + b 
+    
     # elif function == 'fvm_from_fit':
-    #     # Z = 118271476277.5487
-    #     f = lambda stimulus, amp, x_peak, width, fact : \
-    #             amp* np.exp((np.cos( stimulus-x_peak-fact*np.sin( stimulus-x_peak)))/width)
-    #     return lambda x : f( x, A, center, width, flatness) + b
+        """ Test function for V.Mises fit """
+        #     # Z = 118271476277.5487
+        #     f = lambda stimulus, amp, x_peak, width, fact : \
+        #             amp* np.exp((np.cos( stimulus-x_peak-fact*np.sin( stimulus-x_peak)))/width)
+        #     return lambda x : f( x, A, center, width, flatness) + b
+    elif function == 'circle':
+        """ Circular tuning curve for testing hypothesis """                
+        return lambda x: b + A*np.cos( x + center )
     else:
         sys.exit("Unknown function for generating the tuning curves.")
 
@@ -65,7 +74,8 @@ def compute_grad( mu, function = 'vm',
         # k = 1/width
         # ni = -abs(flatness)
         # return lambda x : -(A*np.exp( (  np.cos(( x - center - flatness*np.sin( x - center) )) )/width )  + b )*k*np.sin( (x - center ) + ni*np.sin( (x - center) )  )*(1 + ni*np.cos((x - center)))
-    
+    elif function == 'circle':
+        return lambda x : derivative(mu,x, dx=1e-3)
     else:
         sys.exit("Unknown function")   
     
@@ -102,6 +112,9 @@ class NeuralSystem(object):
     
     def __init__( self, parameters, N_trial = 1e4):
         
+        # Init Random seed
+        np.random.seed( int(datetime.now().timestamp()) )
+        
         def neural_dynamics(t, mu_functions, cov_matrix, N_trial):
             return np.random.multivariate_normal(  [ f(t) for f in mu_functions ], # Average Vector
                                                    cov_matrix,                     # Covariance Matrix
@@ -111,8 +124,8 @@ class NeuralSystem(object):
         for k,i in parameters.items():
             self.__dict__[k] = i
         self.N_trial    = int(N_trial)
-        self.var_stim_dependence  = True if self.rho in ['adaptive','poisson','experimental'] else False
-        self.corr_stim_dependence = True if self.rho in ['adaptive','experimental'] else False
+        self.var_stim_dependence  = True if self.rho in ['adaptive','adaptive_det','poisson','experimental'] else False
+        self.corr_stim_dependence = True if self.rho in ['adaptive','adaptive_det','experimental'] else False
         self.mode = self.rho
         
         # Define tuning curves and their gradients
@@ -133,7 +146,7 @@ class NeuralSystem(object):
                                           A = self.A, function = self.function,
                                           flatness = self.flatness) ]
 
-        if self.rho in ['adaptive','poisson','experimental']:
+        if self.rho in ['adaptive','adaptive_det','poisson','experimental']:
             self.update_rho( self.mode )
             
         # Define Covariance Matrix
@@ -168,18 +181,36 @@ class NeuralSystem(object):
                 if self.mode == 'adaptive':
                    # Case with stim-dependent Variance AND correation
                    grad = lambda  x : np.array([self.grad[0](x), self.grad[1](x)]) 
+                   
+                   # self.sigma     = lambda x : compute_corr_matrix(  grad(x),  # Direction Max Eigenvector
+                   #                                                   self.compute_eigenvalues( [ self.mu[0](x), self.mu[1](x)] ),
+                   #                                                   )
+
+                   # TMP version
                    self.sigma     = lambda x : compute_corr_matrix(  grad(x),  # Direction Max Eigenvector
-                                                                     self.compute_eigenvalues( [ self.mu[0](x), self.mu[1](x)] ),
+                                                                     self.compute_eigenvalues( [ 1, 1] ),
                                                                      )
+
+                elif self.mode == 'adaptive_det':
+                   # Case with stim-dependent Variance AND correation
+                   grad = lambda  x : np.array([self.grad[0](x), self.grad[1](x)]) 
+                   
+                   # self.sigma     = lambda x : compute_corr_matrix(  grad(x),  # Direction Max Eigenvector
+                   #                                                   self.compute_eigenvalues( [ self.mu[0](x), self.mu[1](x)] ),
+                   #                                                   )/sqrt(1-self.alpha**2)
+                   # TMP version
+                   self.sigma     = lambda x : compute_corr_matrix(  grad(x),  # Direction Max Eigenvector
+                                                                     self.compute_eigenvalues( [ 1, 1] ),
+                                                                     )/sqrt(1-self.alpha**2)
+
                 elif self.mode == 'experimental':
                     # Case with stim-dependent Variance AND EXPERIMENTAL correation
-                    C =lambda x:  np.array( [[1, self.rho(x)],[self.rho(x), 1]])
+                    C = lambda x:  np.array( [[1, self.rho(x)],[self.rho(x), 1]])
                     self.sigma = lambda x : V(x).dot(C(x)).dot(V(x))
                 else:
                    sys.exit("Wrong correlation mode")    
 
             else:
-                print('here')
                 # Case with stim-dependent Variance BUT fixed correation
                 C = np.array( [[1,self.alpha],[self.alpha, 1]])
                 self.sigma = lambda x : V(x).dot(C).dot(V(x))
@@ -192,7 +223,7 @@ class NeuralSystem(object):
         return            
     
     def update_rho(self, mode):
-        if mode == 'adaptive':
+        if mode in ['adaptive','adaptive_det']:
             self.rho = lambda x : self.alpha + x - x
         elif mode == 'poisson':
             self.rho = lambda x : self.alpha + x - x
