@@ -11,7 +11,26 @@ import numpy as np
 from network import NeuralSystem, generate_tuning_curve, THETA
 import matplotlib.collections as mcoll
 import sys
+from scipy.signal import savgol_filter
+from run_decoding_simulation import save_results
 
+def draw_oriented_ellipse(cov_matrix, center, ax, color, label = '' ,style = '-',lw = 5, order = 13):
+
+    eigenvalues, eigenvectors = np.linalg.eig(cov_matrix)
+    width, height = np.sqrt(eigenvalues)  
+    angle = np.arctan2(eigenvectors[1, 0], eigenvectors[0, 0]) * (180 / np.pi)
+
+    ell = plt.matplotlib.patches.Ellipse(center, width*7, height*7, 
+                                         angle=angle,alpha=1.0,edgecolor=color,
+                                         facecolor='none',ls=style,lw = lw,label = label, zorder=order)
+    ax.add_patch(ell)
+    return width/2, height/2, np.deg2rad(angle)
+
+def draw_comparison(system_corr, system_ind, ax , t, e = 5, ms = 500,color1 = 'darkolivegreen', color2 = 'goldenrod') :
+    draw_oriented_ellipse( system_corr.sigma(t), [system_corr.mu[0](t), system_corr.mu[1](t)], ax,color=color1,lw=e,order = 13)
+    draw_oriented_ellipse( system_ind.sigma(t), [system_corr.mu[0](t), system_corr.mu[1](t)], ax,color=color2,lw=e,order = 12, style ='--')
+    plt.scatter(system_corr.mu[0](t), system_corr.mu[1](t), s = ms, marker='o',color=color1,zorder = 13)
+    return
 
 def make_segments(x, y):
     """
@@ -122,8 +141,8 @@ def plot_simulation( system, stimolus, plot_gradient = False, E = None,
     return 
 
 def plot_simulation_single_panel( system, stimolus, plot_gradient = False, E = None, 
-                    outdir = None, color_label = '', Emin = -5, Emax = 5 , cmap = 'coolwarm',
-                    fig_size = (12,12), xmax = 18, theta_support = THETA):
+                    outdir = None, color_label = '', Emin = -6, Emax = 6 , cmap = 'coolwarm',
+                    fig_size = (12,12), xmax = 18, theta_support = THETA, plot_ticks = True):
     
     markers = ['o','+','s','^','*','v']
         
@@ -166,12 +185,13 @@ def plot_simulation_single_panel( system, stimolus, plot_gradient = False, E = N
             print("Warning! Color array has different size then segments' array")
         
         lc = mcoll.LineCollection(segments, array=E, cmap=cmap , norm=norm,
-                                  linewidth=20, alpha=1,antialiaseds=True)
+                                  linewidth=30, alpha=1,antialiaseds=True)
 
         ax.add_collection(lc)
         cm = fig.colorbar(lc, ax = ax)
-        cm.set_label(color_label, size = 30, weight = 'bold')
-        cm.ax.tick_params(labelsize=30)
+        cm.set_label(color_label, size = 40)
+        cm.ax.tick_params(labelsize=35)
+        cm.set_ticks(np.arange(Emin, Emax+2,2))
         """
         for i,mu1,mu2 in zip( range(theta.size), mu1, list( map( system.mu[1], theta)) ):
             d=axs[0].scatter( mu1, 
@@ -218,18 +238,22 @@ def plot_simulation_single_panel( system, stimolus, plot_gradient = False, E = N
 
     ax.set_xlim(xmin, xmax)
     ax.set_ylim(ymin, ymax)
-    ax.set_xlabel('RESPONSE A', weight='bold',size=40)
-    ax.set_ylabel('RESPONSE B', weight='bold',size=40)
+    ax.set_xlabel('Response Cell A', size=40)
+    ax.set_ylabel('Responce Cell B', size=40)
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
-    ax.spines['left'].set_linewidth(8)
-    ax.spines['bottom'].set_linewidth(8)
+    ax.spines['left'].set_linewidth(6)
+    ax.spines['bottom'].set_linewidth(6)
     ax.tick_params(width=5,size=20)
     plt.xlim(0,xmax)
     plt.ylim(0,ymax)
     plt.xticks(size=42)
     plt.yticks(size=42)
     
+    if not plot_ticks:
+        ax.set_xticklabels([])
+        ax.set_yticklabels([])
+
     # if len(stimolus) > 0:  ax.legend( title = r'Neural Response at', prop={'size':18})
     # ax.set_title(r"$N_{sampling}$" + f": {system.N_trial}",size=12)
             
@@ -655,52 +679,69 @@ def plot_all_cases(system, R_list, outfile = None):
 
 def plot_error_distr( error, other_errors = [] , label = '', other_labels = [],
                       title = None, outfile = None, Nbins = 100, logscale = False,
-                      xmax = 2*np.pi, xmin = -2*np.pi, xticks = None, fig_size = (10,10)):
+                      xmax = 2*np.pi, xmin = -2*np.pi, xticks = None, fig_size = (10,10),
+                      ymin = 1e-4, ymax = 0.6, color1 = 'darkolivegreen',color2 = 'goldenrod',
+                      filter_hist = False, lw = 7):
     
     import numpy as np
     import matplotlib.pyplot as plt
     
+    
+    
     fig, ax = plt.subplots(1,1,figsize = fig_size)
-
     
     bins = np.linspace(xmin, xmax, Nbins)
-    plt.hist(error, bins = bins, label = label, weights=np.ones(error.size)/error.size)
-    
+    hist, bins = np.histogram(error, bins = bins, weights = np.ones(error.size)/error.size)
+
+    if filter_hist:     hist = savgol_filter(hist, 7,3)
+
+    # plt.hist(error, bins = bins, label = label, weights=np.ones(error.size)/error.size)
+    plt.plot(0.5*(bins[1:]+bins[:-1]),hist, lw = lw, color = color1)
     for i,e in enumerate(other_errors):
         try:
             label = other_labels[i]
         except:
             pass
-        plt.hist(e, bins = bins, label = label,alpha = 0.6, weights=np.ones(error.size)/error.size)
-
+        
+        add_hist, add_bins = np.histogram(e, 
+                                          bins = bins,
+                                          weights = np.ones(e.size)/e.size )
+        
+        if filter_hist: add_hist = savgol_filter(add_hist, 7,3)
+        # plt.hist(e, bins = bins, label = label,alpha = 0.6, weights=np.ones(error.size)/error.size)
+        plt.plot(0.5*(bins[1:]+bins[:-1]),add_hist, lw = lw, alpha=0.8, color   = color2)
+        
     plt.axvline(0,c='black', ls ='--')
-    plt.xlabel("DECODING ERROR [°]",weight = 'bold',size = 42)
-    plt.ylabel("PDF",weight = 'bold',size = 42)
+    plt.xlabel("Decoding Error [°]",size = 42)
+    plt.ylabel("Histogram",size = 42)
     
     ax = plt.gca()
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
     if xticks:
-        plt.xticks(xticks,size=40)
+        plt.xticks(xticks,size=30)
 
-    #plt.yticks([],size=40)
-    leg = plt.legend( frameon=False, 
-                      prop = {'size' : 30},
-                      bbox_to_anchor = (1.01, 1.0))
+    # #plt.yticks([],size=40)
+    # leg = plt.legend( frameon=False, 
+    #                   prop = {'size' : 30},
+    #                   bbox_to_anchor = (1.01, 1.0))
 
-    ax.spines['left'].set_linewidth(8)
-    ax.spines['bottom'].set_linewidth(8)
-    ax.set_yticklabels([])
+    ax.spines['left'].set_linewidth(6)
+    ax.spines['bottom'].set_linewidth(6)
     
     if logscale:
-        plt.yticks(xticks,size=40)
         plt.yscale('log')
-    ax.tick_params(width=5,size=20)
-        
+    ax.tick_params(width=4,size=40)
+    ax.tick_params(width=4,size=20, axis='x')    
+    ax.tick_params(axis='y', size = 20, width = 3, which='minor')
+    ax.set_yticklabels([])
+
     plt.xlim(xmin,xmax)
-    colors = ['tab:blue','tab:orange']
-    for i, (line, text) in enumerate(zip(leg.get_lines(), leg.get_texts())):
-        text.set_color(colors[i])
+    plt.ylim(ymin,ymax)
+    
+    # colors = ['tab:blue','tab:orange']
+    # for i, (line, text) in enumerate(zip(leg.get_lines(), leg.get_texts())):
+    #     text.set_color(colors[i])
     
     if outfile:
         plt.savefig(outfile, dpi=300,bbox_inches='tight')
@@ -709,19 +750,23 @@ def plot_error_distr( error, other_errors = [] , label = '', other_labels = [],
         plt.show()
     return
 
-
-
 def paper_plot_figure_2( system, improvement_list = [], file = None, 
                          OUTDIR = "/home/paolos/Pictures/decoding/paper",
                          skip_frame = False, skip_cases = False, skip_errors = False):
     
+    def angular_distance(theta1, theta2):
+        diff = theta1 - theta2
+        diff[ diff > np.pi] = np.pi - diff[ diff > np.pi]
+        diff[ diff < -np.pi] = 2*np.pi + diff[ diff < -np.pi]
+        return diff
+
     if not skip_frame:
         plt.figure(figsize=(12,12))
         ax = plt.subplot(111)
-        plt.xlabel("SNR", weight = 'bold', size = 40)
-        plt.ylabel("NOISE CORRELATION", weight = 'bold', size = 40)
-        ax.spines['left'].set_linewidth(25)
-        ax.spines['bottom'].set_linewidth(25)
+        plt.xlabel("SNR", size = 50)
+        plt.ylabel("NOISE CORRELATION", size = 50)
+        ax.spines['left'].set_linewidth(15)
+        ax.spines['bottom'].set_linewidth(15)
         ax.tick_params(width=5,size=0)
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
@@ -744,24 +789,28 @@ def paper_plot_figure_2( system, improvement_list = [], file = None,
         plt.scatter([2.5],[0],marker=">", s = 500,c='black', ls = '',linewidth = 600, zorder = 13)
         
         # Horizontal Line
-        plt.text(0.9 - DX, -0.08,"LOW", size=28)
-        plt.text(2.65,-0.08,"HIGH", size=28)
+        plt.text(0.9 - DX, -0.08,"Low", size=28)
+        plt.text(2.65,-0.08,"High", size=28)
         
         # Vertical Line
-        plt.text(-0.08,0.87,"LOW", size=28,rotation = 90)
-        plt.text(-0.08,2.75,"HIGH", size=28,rotation = 90)
+        plt.text(-0.08,0.87,"Low", size=28,rotation = 90)
+        plt.text(-0.08,2.75,"High", size=28,rotation = 90)
         
         plt.xlim(-0.2-DX,3.5)
         plt.ylim(-0.2-DX,3.5)
     
-        OUTFIG = f"{OUTDIR}/figure2_frame.png"
+        OUTFIG = f"{OUTDIR}/figure2_frame.pdf"
         plt.savefig(OUTFIG, dpi = 300, bbox_inches = 'tight')
         print("Saved plot ", OUTFIG)
     else:
         pass
     
+    TARGET_STIM = np.pi*3/4 - 0.3
+    INDX = np.argmin( abs(THETA - TARGET_STIM))
+
+    # PLOT FOUR MANIFOLDS
     if not skip_cases:
-        config = {  'rho'           : 'poisson',
+        config = {  'rho'           : 'poisson_det',
                     'alpha'         : 0.1,
                     'beta'          : 2.0,
                     'V'             : 2,
@@ -775,20 +824,55 @@ def paper_plot_figure_2( system, improvement_list = [], file = None,
                     'N'             : 1000,
                     'int_step'      : 100
                     }
-        system = NeuralSystem(config)
+        system     = NeuralSystem(config)
+        system_ind = NeuralSystem(config)
+        system_ind.alpha = 0.0
+        system_ind.generate_variance_matrix()
+
         if len(improvement_list) == 0:
             sys.exit("Computatation of improvement not implemented yet!")
         else:
             for i, color_gradient in enumerate(improvement_list):
-                TARGET_STIM = THETA[52] if i >= 2 else THETA[90]
-
+                
+                if i == 0:
+                    system.beta     = 2
+                    system.alpha    = 0.2
+                    system_ind.beta = 2
+                    system.generate_variance_matrix()
+                    system_ind.generate_variance_matrix()
+                    
+                elif i == 1:
+                    system.beta     = 0.1
+                    system.alpha    = 0.2
+                    system_ind.beta = 0.1
+                    system.generate_variance_matrix()
+                    system_ind.generate_variance_matrix()
+                    
+                elif i == 2:
+                    system.beta     = 2
+                    system.alpha    = 0.95
+                    system_ind.beta = 2
+                    system.generate_variance_matrix()
+                    system_ind.generate_variance_matrix()
+                    
+                elif i == 3:
+                    system.beta     = 0.1
+                    system.alpha    = 0.95
+                    system_ind.beta = 0.1
+                    system.generate_variance_matrix()
+                    system_ind.generate_variance_matrix()
+                    
+                else:
+                    sys.exit("Oh oh...something wrong happened!")
+                    
                 plot_simulation_single_panel(system, [], E = color_gradient, 
-                                             color_label = "DECODING IMPROVEMENT [%]",
-                                             fig_size = (10,10))
-                plt.scatter(system.mu[0](TARGET_STIM), 
-                            system.mu[1](TARGET_STIM),
-                            s = 2500, c = 'black',
-                            marker='*', zorder = 13)
+                                             color_label = "Decoding Improvement [%]",
+                                             fig_size = (10,10), plot_ticks = False)
+                draw_comparison(system, system_ind, plt.gca(), TARGET_STIM,e = 4)
+                # plt.scatter(system.mu[0](TARGET_STIM), 
+                #             system.mu[1](TARGET_STIM),
+                #             s = 500, c = 'black',
+                #             marker='o', zorder = 13)
                 plt.xticks(np.linspace(0,25,5).astype(int))
                 plt.yticks(np.linspace(0,25,5).astype(int))
                 
@@ -811,78 +895,239 @@ def paper_plot_figure_2( system, improvement_list = [], file = None,
         plt.clf()
         
         # Plot Distributions
-        data = dict(np.load("./data/poisson_selected.npz"))
-        data2 = dict(np.load("./data/poisson_selected_paper.npz"))
-        
-        
+        # data  = dict(np.load("/home/paolos/data/simulations/bkp23072025/poisson_selected.npz"))
+        # data2 = dict(np.load("/home/paolos/data/simulations/bkp23072025/poisson_selected_paper.npz"))
+        # data3 = dict(np.load("/home/paolos/repo/neural_noise.bkp/data/poisson_selected_paper.npz"))
+                
         # CASE1
-        OUTFIG = f"{OUTDIR}/figure2_errors_1.png"
-        theta_sampling = np.hstack((data['a_0.10_b_2.00'][0], data2['a_0.10_b_2.00'][0]))
-        theta_sampling_control = np.hstack((data['a_0.10_b_2.00'][1], data2['a_0.10_b_2.00'][1]))
-        diff = THETA[88] - theta_sampling[88,:]
-        diff_control = THETA[88] - theta_sampling_control[88,:]
+        OUTFIG = f"{OUTDIR}/figure2_errors_1.pdf"
+        sampling = np.load("/home/paolos/Desktop/sampling_case1.npz")
+        # theta_sampling         = data['a_0.10_b_5.00'][0]
+        # theta_sampling_control = data['a_0.10_b_5.00'][1]
+        theta_sampling = sampling['correlated']
+        theta_sampling_control = sampling['independent']
         
-        diff_control[ diff_control > np.pi] = np.pi - diff_control[ diff_control > np.pi]
-        diff_control[ diff_control < -np.pi] = np.pi + diff_control[ diff_control < -np.pi]
-        diff[ diff > np.pi] = np.pi - diff[ diff > np.pi]
-        diff[ diff < -np.pi] = np.pi + diff[diff < -np.pi]
+        # theta_sampling = np.hstack((data['a_0.10_b_2.00'][0], data2['a_0.10_b_2.00'][0]))
+        # theta_sampling_control = np.hstack((data['a_0.10_b_2.00'][1], data2['a_0.10_b_2.00'][1]))
+        
+        # diff         = angular_distance( THETA[INDX] , theta_sampling[INDX,:])
+        # diff_control = angular_distance( THETA[INDX] , theta_sampling_control[INDX,:])
+        
+        diff         = angular_distance( THETA[INDX] , theta_sampling[:])
+        diff_control = angular_distance( THETA[INDX] , theta_sampling_control[:])
+                
         plot_error_distr( np.rad2deg(diff), other_errors = [np.rad2deg(diff_control)] , 
-                          # label = 'CORRELATED', other_labels= ['INDEPENDENT'],                          
-                          Nbins = 70,  xmin = -120, xmax = 120,
-                          xticks = [-120,-60,0,60,120], logscale = True,
-                          outfile = OUTFIG)
+                          # label = \'CORRELATED', other_labels= ['INDEPENDENT'],                          
+                          Nbins = 56,  xmin = -180 , xmax = 180,
+                          xticks = [-180,-90,0,90,180], logscale = True,
+                          outfile = OUTFIG, filter_hist = True)
+        diff_control_case1 = np.copy(diff_control)
         plt.clf()
 
         # CASE2
-        OUTFIG = f"{OUTDIR}/figure2_errors_2.png"
-        theta_sampling = np.hstack((data['a_0.10_b_0.10'][0], data2['a_0.10_b_0.10'][0]))
-        theta_sampling_control = np.hstack((data['a_0.10_b_0.10'][1], data2['a_0.10_b_0.10'][1]))
-        diff = THETA[90] - theta_sampling[90,:]
-        diff_control = THETA[90] - theta_sampling_control[90,:]
-        
-        diff_control[ diff_control > np.pi] = np.pi - diff_control[ diff_control > np.pi]
-        diff_control[ diff_control < -np.pi] = np.pi + diff_control[ diff_control < -np.pi]
-        diff[ diff > np.pi] = np.pi - diff[ diff > np.pi]
-        diff[ diff < -np.pi] = np.pi + diff[diff < -np.pi]
-        
+        OUTFIG = f"{OUTDIR}/figure2_errors_2.pdf"
+        sampling = np.load("/home/paolos/Desktop/sampling_case2.npz")
+        # theta_sampling         = data['a_0.10_b_5.00'][0]
+        # theta_sampling_control = data['a_0.10_b_5.00'][1]
+        theta_sampling = sampling['correlated']
+        theta_sampling_control = sampling['independent']
+
+        # theta_sampling = np.hstack((data['a_0.10_b_0.10'][0], data2['a_0.10_b_0.10'][0]))
+        # theta_sampling_control = np.hstack((data['a_0.10_b_0.10'][1], data2['a_0.10_b_0.10'][1]))
+        # diff         = angular_distance( THETA[INDX] , theta_sampling[INDX,:])
+        # diff_control = angular_distance( THETA[INDX] , theta_sampling_control[INDX,:])
+        diff         = angular_distance( THETA[INDX] , theta_sampling[:])
+        diff_control = angular_distance( THETA[INDX] , theta_sampling_control[:])
         plot_error_distr( np.rad2deg(diff), other_errors = [np.rad2deg(diff_control)] , 
                           # label = 'CORRELATED', other_labels= ['INDEPENDENT'], 
-                          Nbins = 50,  xmin = -30, xmax = 30,
-                          xticks = [-30,-15,0,15,30], logscale = True,
-                          outfile = OUTFIG)
+                          Nbins = 22, xmax = 20, xmin = -20, logscale = True,
+                          xticks = [-20,-10,0,10,20],
+                          outfile = OUTFIG, filter_hist = False)
+        diff_control_case2 = np.copy(diff_control)
         plt.clf()
 
         # CASE3
-        OUTFIG = f"{OUTDIR}/figure2_errors_3.png"
-        theta_sampling = data['a_0.90_b_2.00'][0]
-        theta_sampling_control = data['a_0.90_b_2.00'][1]
-        diff = THETA[52] - theta_sampling[52,:]
-        diff_control = THETA[52] - theta_sampling_control[52,:]
-        plot_error_distr( np.rad2deg(diff), other_errors = [np.rad2deg(diff_control)] , 
+        OUTFIG = f"{OUTDIR}/figure2_errors_3.pdf"
+        
+        # theta_sampling = np.hstack((data['a_0.90_b_2.00'][0],data3['a_0.90_b_2.00'][0],))
+        sampling = np.load("/home/paolos/Desktop/sampling_case2.npz")
+        # theta_sampling         = data['a_0.10_b_5.00'][0]
+        # theta_sampling_control = data['a_0.10_b_5.00'][1]
+        theta_sampling = sampling['correlated']
+
+        #theta_sampling_control = data['a_0.90_b_2.00'][1]
+        diff = angular_distance( THETA[INDX] , theta_sampling[:])
+        # diff = angular_distance( THETA[INDX] , theta_sampling[INDX,:])
+
+        #diff_control = THETA[INDX] - theta_sampling_control[INDX,:]
+        plot_error_distr( np.rad2deg(diff), other_errors = [np.rad2deg(diff_control_case1)] , 
                           # label = 'CORRELATED', other_labels= ['INDEPENDENT'], 
-                          Nbins = 50, xmax = 45, xmin = -45,
-                          xticks = [-45,-30,-15,0,15,30,45],
-                          outfile = OUTFIG)
+                          Nbins = 56, xmax = 180, xmin = -180, logscale = True,
+                          xticks = [-180,-90,0,90,180],
+                          outfile = OUTFIG, filter_hist = True)
         plt.clf()
 
         # CASE4
-        OUTFIG = f"{OUTDIR}/figure2_errors_4.png"
-        theta_sampling = theta_sampling = data['a_0.95_b_0.10'][0]
-        theta_sampling_control = data['a_0.95_b_0.10'][1]
-        diff = THETA[52] - theta_sampling[52,:]
-        diff_control = THETA[52] - theta_sampling_control[52,:]
-        plot_error_distr( np.rad2deg(diff), other_errors = [np.rad2deg(diff_control)] , 
+        OUTFIG = f"{OUTDIR}/figure2_errors_4.pdf"
+        sampling = np.load("/home/paolos/Desktop/sampling_case4.npz")
+        theta_sampling = sampling['correlated']
+        # theta_sampling_control = sampling['independent']
+        # theta_sampling = theta_sampling = data['a_0.95_b_0.10'][0]
+        # theta_sampling_control = data['a_0.95_b_0.10'][1]
+        # diff = angular_distance( THETA[INDX] , theta_sampling[INDX,:])
+        diff = angular_distance( THETA[INDX] , theta_sampling[:])
+
+        # # diff_control = THETA[INDX] - theta_sampling_control[INDX,:]
+        plot_error_distr( np.rad2deg(diff), other_errors = [np.rad2deg(diff_control_case2)] , 
                           # label = 'CORRELATED', other_labels= ['INDEPENDENT'], 
-                          Nbins = 70, xmax = 10, xmin = -10,
-                          xticks = [-10,-5,0,5,10],
-                          outfile = OUTFIG)
+                          Nbins = 22, xmax = 20, xmin = -20, logscale = True,
+                          xticks = [-20,-10,0,10,20],
+                          outfile = OUTFIG, filter_hist = False)
         plt.clf()
-        
+
         
     else:
         pass
 
     
+    return
+
+def paper_plot_figure_3( OUTDIR = "/home/paolos/Pictures/decoding/paper"):
     
+    conf = {    'label'         : 'poisson_selected',
+                'rho'           : 'poisson',
+                'alpha'         : 0.5,
+                'beta'          : 0.2,
+                'V'             : 2,
+                'function'      : 'fvm',
+                'A'             : 0.17340510276921817,
+                'width'         : 0.2140327993142855,
+                'flatness'      : 0.6585904840291591,
+                'b'             : 1.2731732385019432,
+                'center'        : 2.9616211149125977 - 0.21264734641020677,
+                'center_shift'  : np.pi/4,
+                }
     
+    system     = NeuralSystem(conf )
+    system_ind = NeuralSystem(conf )
+    system_ind.alpha = 0.0
+    system_ind.beta = system.beta = 0.01
+    system_ind.generate_variance_matrix()
+        
+    system.alpha = 0.5
+    system.generate_variance_matrix()
+    plot_simulation_single_panel( system, [] )
+    draw_comparison(system, system_ind,plt.gca(),1.71, e = 8, ms = 600)
+    plt.xlim(11.,14.);plt.ylim(1.5,3.0)
+    plt.gca().set_xticklabels([])
+    plt.gca().set_yticklabels([])
+    plt.savefig(f"{OUTDIR}/figure3_detrimental_SR.pdf", dpi = 300, bbox_inches='tight')
+    
+    system.alpha = 0.993
+    system.generate_variance_matrix()    
+    plot_simulation_single_panel( system, [] )
+    draw_comparison(system, system_ind,plt.gca(),1.71, e = 8, ms = 600)
+    plt.xlim(11.,14.);plt.ylim(1.5,3.0)
+    plt.gca().set_xticklabels([])
+    plt.gca().set_yticklabels([])
+    plt.savefig(f"{OUTDIR}/figure3_curvature.pdf", dpi = 300, bbox_inches='tight')
+
+
+    system.alpha = 0.5
+    system.beta = 0.23
+    system_ind.beta = 0.23
+    system.generate_variance_matrix()
+    system_ind.generate_variance_matrix()
+
+    plot_simulation_single_panel( system, [] )
+    # draw_comparison(system, system_ind,plt.gca(),1.71, e = 8, ms = 600)
+    # draw_comparison(system, system_ind,plt.gca(),2*np.pi - 1.71, e = 8, ms = 600)
+    draw_comparison(system, system_ind,plt.gca(), np.pi*1.25,ms = 220, e = 6)
+    draw_comparison(system, system_ind,plt.gca(), np.pi*0.75,ms = 220, e = 6)
+    plt.xlim(-1,28.);plt.ylim(-1,28)
+
+    # plt.xlim(11.,14.);plt.ylim(1.5,3.0)
+    plt.gca().set_xticklabels([])
+    plt.gca().set_yticklabels([])
+    plt.savefig(f"{OUTDIR}/figure3_non-local.pdf", dpi = 300, bbox_inches='tight')
+
+    """
+    system.alpha = 0.95
+    system.beta = 1
+    system_ind.beta = 1
+    system.generate_variance_matrix()
+    system_ind.generate_variance_matrix()
+    plot_simulation_single_panel( system, [] )
+    draw_comparison(system, system_ind,plt.gca(), 0)
+    draw_comparison(system, system_ind,plt.gca(), np.pi)
+    plt.xlim(-10,40);plt.ylim(-10,40)
+    plt.gca().set_xticklabels([])
+    plt.gca().set_yticklabels([])
+    plt.savefig(f"{OUTDIR}/figure3_detrimental_violations.pdf", dpi = 300, bbox_inches='tight')
+
+    system.alpha = 0.995
+    system_ind.beta = system.beta = 0.01
+    system_ind.generate_variance_matrix()
+    system.generate_variance_matrix()
+    plot_simulation_single_panel( system, [] )
+    draw_comparison(system, system_ind,plt.gca(), 1.71)
+    plt.xlim(11.,14.);plt.ylim(1.6,2.8)
+    plt.gca().set_xticklabels([])
+    plt.gca().set_yticklabels([])
+    plt.savefig(f"{OUTDIR}/figure3_beneficial1_violations.pdf", dpi = 300, bbox_inches='tight')
+
+    conf['rho'] = 'adaptive'
+    conf['alpha'] = 0.9
+    system     = NeuralSystem(conf )
+    system_ind = NeuralSystem(conf )
+    system_ind.alpha = 0.0
+    system_ind.beta = system.beta = 3.5
+    system_ind.generate_variance_matrix()
+    system.generate_variance_matrix()
+    plot_simulation_single_panel( system, [] )
+    draw_comparison(system, system_ind,plt.gca(), np.pi*1.25)
+    draw_comparison(system, system_ind,plt.gca(), np.pi*0.75)
+    plt.xlim(1,26.);plt.ylim(1,26)
+    plt.gca().set_xticklabels([])
+    plt.gca().set_yticklabels([])
+    plt.savefig(f"{OUTDIR}/figure3_beneficial2_violations.pdf", dpi = 300, bbox_inches='tight')
+    """
+
+    return
+
+def paper_plot_figure_4( OUTDIR = "/home/paolos/Pictures/decoding/paper"):
+    
+    conf = {    'label'         : 'poisson_selected',
+                'rho'           : 'adaptive',
+                'alpha'         : 0.9,
+                'beta'          : 1,
+                'V'             : 2,
+                'function'      : 'fvm',
+                'A'             : 0.17340510276921817,
+                'width'         : 0.2140327993142855,
+                'flatness'      : 0.6585904840291591,
+                'b'             : 1.2731732385019432,
+                'center'        : 2.9616211149125977 - 0.21264734641020677,
+                'center_shift'  : np.pi/4,
+                }
+    
+    system     = NeuralSystem(conf )
+
+    plot_simulation_single_panel( system, [] )
+    for t in np.linspace(0,2*np.pi,11)[2:-2]:        
+        draw_oriented_ellipse( system.sigma(t), 
+                              [system.mu[0](t), system.mu[1](t)],
+                              plt.gca(),
+                              color="darkolivegreen",
+                              lw=5,
+                              order = 13)
+    plt.gca().set_xticklabels([])
+    plt.xlim(-2,25)
+    plt.ylim(-2,25)
+    plt.gca().set_xticklabels([])
+    plt.gca().set_yticklabels([])
+
+    plt.savefig(f"{OUTDIR}/figure4A.pdf", dpi = 300, bbox_inches='tight')
+
+
     return

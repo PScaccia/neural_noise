@@ -8,11 +8,11 @@ Created on Thu Jan 23 16:56:54 2025
 
 import numpy as np
 
-config = {  'label'         : 'poisson_45deg_sim_N10000_simpson',
-            'rho'           : "poisson",
+config = {  'label'         : 'poisson_det',
+            'rho'           : "poisson_det",
             #'alpha'         : np.array([-0.75,-0.5,-0.25,-0.1, 0.05,0.15, 0.25, 0.4, 0.5,0.6, 0.7 , 0.8, 0.95]),
-            'alpha'         : np.array([0.05,0.15, 0.25, 0.4]),
-            'beta'          : np.array([ 0.7, 0.4,0.1]),
+            'alpha'         : np.array([0.2,0.95]),
+            'beta'          : np.array([ 0.1, 2.0]),
             'function'      : 'fvm',
             'A'             : 1.609874980656409e-10,
             'width'         : 0.04008507948420414,
@@ -20,7 +20,7 @@ config = {  'label'         : 'poisson_45deg_sim_N10000_simpson',
             'flatness'      : 0.8999356386649207,
             'b'             : 0.7487998754100026,
             'center_shift'  : np.pi/4,
-            'N'             : 10000,
+            'N'             : 2000,
             'int_step'      : 100
             }
 

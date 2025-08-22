@@ -16,7 +16,7 @@ def parser():
     parser = argparse.ArgumentParser()
     parser.add_argument('--n_proc',type=int,required=False, default=20,help="Number of workers")
     parser.add_argument('--multi_thread',action='store_true', default=True,help="Multi-threading")
-    parser.add_argument('--config','-c',type=str,required=False,default='config/special.pkl',help="Configuration File")
+    parser.add_argument('--config','-c',type=str,required=False,default='config/special_adaptive.pkl',help="Configuration File")
     return parser.parse_args()
 
 def read_conf( file ):

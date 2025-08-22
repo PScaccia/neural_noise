@@ -9,12 +9,12 @@ import numpy as np
 import pickle
 
 
-config = {  'label'         : 'poisson_selected_paper',
-            'rho'           : "poisson",
+config = {  'label'         : 'poisson_det',
+            'rho'           : "poisson_det",
             #'alpha'         : np.array([-0.75,-0.5,-0.25,-0.1, 0.05,0.15, 0.25, 0.4, 0.5,0.6, 0.7 , 0.8, 0.95]),
             # 'alpha'         : np.linspace(0,1,21)[1:4],
-            'alpha'         : np.array([ 0.1 ]),
-            'beta'          : np.array([ 0.1, 2.0 ]),
+            'alpha'         : np.array([ 0.2, 0.95 ]),
+            'beta'          : np.array([ 2.0 ]),
             'function'      : 'fvm',
             'A'             : 0.17340510276921817,
             'width'         : 0.2140327993142855,

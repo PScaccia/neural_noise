@@ -45,11 +45,11 @@ def compute_innovation(results, errors = False):
                 MSE_control, MSE_control_err = compute_MSE( np.array( sampling[1,:,:]),  THETA, mode = 'mse', errors = errors)
                     
                 # Smooth with Savitzky-Golay filter 
-                # MSE = circular_moving_average(THETA, MSE,13)
-                # MSE_control = circular_moving_average(THETA, MSE_control,13)
+                # MSE = circular_moving_average(THETA, MSE,15)
+                # MSE_control = circular_moving_average(THETA, MSE_control,15)
 
-                # MSE         = savgol_filter(MSE,         window_length=7, polyorder=5)
-                # MSE_control = savgol_filter(MSE_control, window_length=7,  polyorder=5)
+                # MSE         = savgol_filter(MSE,         window_length=11, polyorder=3)
+                # MSE_control = savgol_filter(MSE_control, window_length=11,  polyorder=3)
                                 
                 impr = (1 - (MSE/MSE_control))*100 
                 R.append(impr)

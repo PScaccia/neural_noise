@@ -124,7 +124,7 @@ class NeuralSystem(object):
         for k,i in parameters.items():
             self.__dict__[k] = i
         self.N_trial    = int(N_trial)
-        self.var_stim_dependence  = True if self.rho in ['adaptive','adaptive_det','poisson','experimental'] else False
+        self.var_stim_dependence  = True if self.rho in ['adaptive','adaptive_det','poisson','poisson_det','experimental'] else False
         self.corr_stim_dependence = True if self.rho in ['adaptive','adaptive_det','experimental'] else False
         self.mode = self.rho
         
@@ -146,7 +146,7 @@ class NeuralSystem(object):
                                           A = self.A, function = self.function,
                                           flatness = self.flatness) ]
 
-        if self.rho in ['adaptive','adaptive_det','poisson','experimental']:
+        if self.rho in ['adaptive','adaptive_det','poisson','poisson_det','experimental']:
             self.update_rho( self.mode )
             
         # Define Covariance Matrix
@@ -173,7 +173,6 @@ class NeuralSystem(object):
         if self.var_stim_dependence:
             V = lambda x : np.array( [[np.sqrt(self.beta*self.mu[0](x)), 0], 
                                       [0, np.sqrt(self.beta*self.mu[1](x))]])
-
                 
             #C = lambda x : compute_corr_matrix(np.ones(D), self.alpha)
             if self.corr_stim_dependence:
@@ -182,26 +181,26 @@ class NeuralSystem(object):
                    # Case with stim-dependent Variance AND correation
                    grad = lambda  x : np.array([self.grad[0](x), self.grad[1](x)]) 
                    
-                   # self.sigma     = lambda x : compute_corr_matrix(  grad(x),  # Direction Max Eigenvector
-                   #                                                   self.compute_eigenvalues( [ self.mu[0](x), self.mu[1](x)] ),
-                   #                                                   )
-
-                   # TMP version
                    self.sigma     = lambda x : compute_corr_matrix(  grad(x),  # Direction Max Eigenvector
-                                                                     self.compute_eigenvalues( [ 1, 1] ),
-                                                                     )
+                                                                      self.compute_eigenvalues( [ self.mu[0](x), self.mu[1](x)] ),
+                                                                      )
+
+                   # TMP version with eigenvector of the constant Sigma
+                   # self.sigma     = lambda x : compute_corr_matrix(  grad(x),  # Direction Max Eigenvector
+                   #                                                   self.compute_eigenvalues( [ 1, 1] ),
+                   #                                                   )
 
                 elif self.mode == 'adaptive_det':
                    # Case with stim-dependent Variance AND correation
                    grad = lambda  x : np.array([self.grad[0](x), self.grad[1](x)]) 
                    
-                   # self.sigma     = lambda x : compute_corr_matrix(  grad(x),  # Direction Max Eigenvector
-                   #                                                   self.compute_eigenvalues( [ self.mu[0](x), self.mu[1](x)] ),
-                   #                                                   )/sqrt(1-self.alpha**2)
-                   # TMP version
                    self.sigma     = lambda x : compute_corr_matrix(  grad(x),  # Direction Max Eigenvector
-                                                                     self.compute_eigenvalues( [ 1, 1] ),
-                                                                     )/sqrt(1-self.alpha**2)
+                                                                      self.compute_eigenvalues( [ self.mu[0](x), self.mu[1](x)] ),
+                                                                      )/sqrt(1-self.alpha**2)
+                   # TMP version with eigenvector of the constant Sigma
+                   # self.sigma     = lambda x : compute_corr_matrix(  grad(x),  # Direction Max Eigenvector
+                   #                                                   self.compute_eigenvalues( [ 1, 1] ),
+                   #                                                   )/sqrt(1-self.alpha**2)
 
                 elif self.mode == 'experimental':
                     # Case with stim-dependent Variance AND EXPERIMENTAL correation
@@ -213,8 +212,8 @@ class NeuralSystem(object):
             else:
                 # Case with stim-dependent Variance BUT fixed correation
                 C = np.array( [[1,self.alpha],[self.alpha, 1]])
-                self.sigma = lambda x : V(x).dot(C).dot(V(x))
-                            
+                scale_factor = (1-(self.alpha**2)) if self.mode == 'poisson_det' else 1
+                self.sigma = lambda x : V(x).dot(C).dot(V(x))/np.sqrt(scale_factor)
         else:
             # Case with stim-independent Matrix
             self.sigma = lambda x : self.V*np.array( [[1, self.rho], [self.rho, 1]])
@@ -225,7 +224,7 @@ class NeuralSystem(object):
     def update_rho(self, mode):
         if mode in ['adaptive','adaptive_det']:
             self.rho = lambda x : self.alpha + x - x
-        elif mode == 'poisson':
+        elif mode in ['poisson','poisson_det']:
             self.rho = lambda x : self.alpha + x - x
         elif mode == 'experimental': 
             # from cases import EXPERIMENT_FIT, FIT_PARAMS
@@ -288,12 +287,12 @@ class NeuralSystem(object):
          return covar/(mu1_std*mu2_std)
 
     def compute_eigenvalues(self, mu ):
-        mu_sum = sum(mu)
-        mu_prod = np.prod( mu )
-        delta = mu_sum**2 - 4*mu_prod*(1-self.alpha**2)
-        delta = abs(delta)
-        return   self.beta*0.5 * ( mu_sum + np.sqrt(  delta )  ),\
-                 self.beta*0.5 * ( mu_sum - np.sqrt( delta  )  )
+        mu_average   = np.mean(mu)
+        mu_half_diff = np.diff(mu)*0.5
+        mu_prod      = np.prod( mu )
+        delta = mu_half_diff**2  +  mu_prod*self.alpha**2
+        return   self.beta * ( mu_average + np.sqrt(  delta )  ),\
+                 self.beta * ( mu_average - np.sqrt( delta  )  )
 
 if __name__ == '__main__':
     from plot_tools import plot_simulation
