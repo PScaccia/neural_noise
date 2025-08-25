@@ -33,7 +33,7 @@ def read_conf( file ):
             config = pickle.load(handle)
     return config
 
-def main_cicle( config, args):
+def main( config, args):
     import copy
     
     print("RUNNING SIMULATION WITH CONFIG FILE: ",args.config)
@@ -44,23 +44,33 @@ def main_cicle( config, args):
     results = {}
     outfile = "./data/" + config['label'] + '.npz'
     
+    # Function to check if the independent case has already been simulated
+    check_simulated_noise = lambda x : len([ x for x in results.keys() if '_b_{:.2f}'.format(b) in x]) != 0
+
+    # Iterate on parameter grid
     for a, b in zip(  alpha_grid.flatten(), 
                       beta_grid.flatten()   ):
 
-        print("Running simulation with alpha: {} beta: {}".format(a,b))
-        
+        print("Running simulation with alpha: {} beta: {}".format(a,b))       
         case['alpha'] = a
         case['beta']  = b
 
         # Run single simulation with alpha = a and beta = b
-        results['a_{:.2f}_b_{:.2f}'.format(a,b)] = simulation(case, args)
+        if check_simulated_noise(b):
+            # If it has already ran the independent case for that noise take that
+            old_case = [ x for x in results.keys() if 'a_{:.2f}_b_{:.2f}'.format(a,b) in x][0]
+            results['a_{:.2f}_b_{:.2f}'.format(a,b)] = [ simulation(case, args,skip_independent = True)[0], 
+                                                         results[old_case][1]   ]
+        else:
+            # Otherwise, simulate both cases
+            results['a_{:.2f}_b_{:.2f}'.format(a,b)] = simulation(case, args)
         
         # Save results
         save_results(results, outfile )
             
     return
 
-def simulation( config, args ):
+def simulation( config, args, skip_independent = False ):
     
     # Define neural system
     system = NeuralSystem( config, N_trial = config['N'] )
@@ -75,14 +85,16 @@ def simulation( config, args ):
     system.alpha = 0.0
     system.rho = lambda x : 0.0
     system.generate_variance_matrix()
+    if skip_independent:
+        return [theta_sampling, None]
+    else:
+        # Sample theta extimate with the independent system
+        theta_sampling_control = sample_theta_ext(system, THETA, 
+                                                  decoder = 'bayesian', N_step = config['int_step'], 
+                                                  multi_thread = args.multi_thread, 
+                                                  num_threads = args.n_proc )
     
-    # Sample theta extimate with the independent system
-    theta_sampling_control = sample_theta_ext(system, THETA, 
-                                              decoder = 'bayesian', N_step = config['int_step'], 
-                                              multi_thread = args.multi_thread, 
-                                              num_threads = args.n_proc )
-
-    return [ theta_sampling, theta_sampling_control ]
+        return [ theta_sampling, theta_sampling_control ]
 
 def save_results(results, file ):
     if os.path.isfile(file):
@@ -106,6 +118,6 @@ if __name__ == '__main__':
     config = read_conf(args.config)
 
     # Run Main Cicle
-    main_cicle( config, args )
+    main( config, args )
     
     

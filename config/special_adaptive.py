@@ -9,12 +9,12 @@ import numpy as np
 import pickle
 
 
-config = {  'label'         : 'adaptive_selected',
-            'rho'           : "adaptive",
-            #'alpha'         : np.array([-0.75,-0.5,-0.25,-0.1, 0.05,0.15, 0.25, 0.4, 0.5,0.6, 0.7 , 0.8, 0.95]),
-            # 'alpha'         : np.array([ 0.15, 0.35, 0.55, 0.75, 0.95, 0.99]),
-            'alpha'         : np.arange(0.14,1.0,0.04),
-            'beta'          : np.array([  0.2, 0.1 ]),
+config = {  
+            'label'         : 'adaptive_selected',
+            'rho'           : "adaptive" ,
+            # 'alpha'         : np.arange(0.14,1.0,0.04),
+            'alpha'         : np.arange(0.58,1.0,0.04),
+            'beta'          : np.array([  0.1 ]),
             'function'      : 'fvm',
             'A'             : 0.17340510276921817,
             'width'         : 0.2140327993142855,
