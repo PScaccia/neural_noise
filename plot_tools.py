@@ -231,9 +231,9 @@ def plot_simulation_single_panel( system, stimolus, plot_gradient = False, E = N
         # ymin = 0
 
     # Tmp    
-    xmax = 22
+    xmax = 25
     xmin = 0
-    ymax = 22
+    ymax = 25
     ymin = 0
 
     ax.set_xlim(xmin, xmax)
@@ -750,6 +750,481 @@ def plot_error_distr( error, other_errors = [] , label = '', other_labels = [],
         plt.show()
     return
 
+def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
+                        skip_panelA = False, skip_panelB = False, skip_panelC = False,
+                        skip_panelD = False):
+    from   scipy.stats import multivariate_normal
+    from   scipy.special import expit  # Sigmoid function
+    from   scipy.special import erf
+    from   matplotlib.patches import Ellipse
+    import matplotlib.cm as cm
+    import matplotlib.colors as mcolors
+    
+    def compute_delta(x, a, b, Sigma_inv):
+        const = 0.5 * (a.T @ Sigma_inv @ a - b.T @ Sigma_inv @ b)
+        return (a - b).T @ Sigma_inv @ x - const
+    
+    def posterior_mean(x, a, b, Sigma_inv):
+        # Compute posterior probability P(S = b | x)
+        delta = compute_delta(x, a, b, Sigma_inv)
+        p_b = expit(-delta)  # sigmoid(delta)
+        # Posterior mean estimator
+        return p_b
+    
+    def plot_cov_ellipse(cov, pos, nstd=2, ax=None, **kwargs):
+        """
+        Plots an ellipse representing the covariance matrix 
+        cov centered at pos, scaled to nstd standard deviations.
+        """
+        ax = ax or plt.gca()
+        
+        # Eigen-decomposition of covariance matrix
+        eigvals, eigvecs = np.linalg.eigh(cov)
+        # Sort eigenvalues and eigenvectors
+        order = eigvals.argsort()[::-1]
+        eigvals, eigvecs = eigvals[order], eigvecs[:, order]
+        
+        # Angle of ellipse rotation in degrees
+        angle = np.degrees(np.arctan2(eigvecs[1, 0], eigvecs[0, 0]))
+        
+        # Width and height are "2 * nstd * sqrt(eigenvalue)"
+        width, height = 2 * nstd * np.sqrt(eigvals)
+        
+        ellipse = Ellipse(xy=pos, width=width, height=height, angle=angle, **kwargs, zorder =13)
+        
+        ax.add_patch(ellipse)
+        return ellipse
+    
+    def estimate_mse(a, b, Sigma, num_samples=50000):
+        Sigma_inv = np.linalg.inv(Sigma)
+        
+        # Sample points from each Gaussian likelihood with equal prior 0.5
+        samples_a = np.random.multivariate_normal(a, Sigma, size=num_samples)
+        samples_b = np.random.multivariate_normal(b, Sigma, size=num_samples)
+        
+        # Combine the samples and true states
+        samples = np.vstack([samples_a, samples_b])
+        true_states = np.vstack([np.tile(0, (num_samples, 1)), 
+                                 np.tile(1, (num_samples, 1))])[:,0]
+        
+        # Compute posterior means for all samples
+        estimates = np.array([posterior_mean(x, a, b, Sigma_inv) for x in samples])
+        # deltas = np.array([compute_delta(x, a, b, Sigma_inv) for x in samples ])
+        # ind = np.argsort(deltas)
+        # plt.plot( deltas[ind], estimates[ind], label = "{:.2f}".format(Sigma[1,0]/np.sqrt(Sigma[1,1]*Sigma[0,0])))
+        # plt.show()
+    
+        # Compute squared errors
+        errors_a = estimates[:num_samples]
+        errors_b = 1 - estimates[num_samples:]
+        
+        mse_a = np.mean(errors_a**2)
+        mse_b = np.mean(errors_b**2)
+        
+        # Average to get Monte Carlo estimate of MSE
+        mse = np.mean([mse_a,mse_b])
+        return mse
+    
+    def d_prime(vector, Sigma):
+        invSigma = np.linalg.inv(Sigma)
+        return vector@invSigma@vector
+    
+    def compute_mutual_information(vector, Sigma):
+        
+        d = np.sqrt(d_prime(vector, Sigma))/(2*np.sqrt(2))    
+        pe = 0.5*(1-erf(d))
+        
+        return 1 + pe*np.log(pe) + (1-pe)*np.log((1-pe))
+    
+    def plot_cov_ellipse(cov, pos, nstd=2, ax=None, **kwargs):
+        """
+        Plots an ellipse representing the covariance matrix 
+        cov centered at pos, scaled to nstd standard deviations.
+        """
+        ax = ax or plt.gca()
+        
+        # Eigen-decomposition of covariance matrix
+        eigvals, eigvecs = np.linalg.eigh(cov)
+        # Sort eigenvalues and eigenvectors
+        order = eigvals.argsort()[::-1]
+        eigvals, eigvecs = eigvals[order], eigvecs[:, order]
+        
+        # Angle of ellipse rotation in degrees
+        angle = np.degrees(np.arctan2(eigvecs[1, 0], eigvecs[0, 0]))
+        
+        # Width and height are "2 * nstd * sqrt(eigenvalue)"
+        width, height = 2 * nstd * np.sqrt(eigvals)
+        
+        ellipse = Ellipse(xy=pos, width=width, height=height, angle=angle, **kwargs, zorder =13)
+        
+        ax.add_patch(ellipse)
+        return ellipse
+
+    V1 = 0.2
+    V2 = 0.2
+    rho = 0
+    Sigma = np.array([[V1,0], [0, V2]])
+    Sigma_rho = np.array([[V1,0.6*np.sqrt(V1*V2)], [0.6*np.sqrt(V1*V2), V2]])
+
+    #<----------------------------- FIRST PANEL
+    if not skip_panelA:
+        # Create figure with 3 panels
+        fig, axes = plt.subplots(2, 2, figsize=(6, 6))
+        label_size = 18
+        dx = 3
+
+        a = np.array([1, 6]).astype(float)
+        b = np.array([3, 4]).astype(float)
+        center = 0.5*(a+b)
+        color1 = 'darkolivegreen'
+        color2 = 'goldenrod'
+        rho = 0.85
+        theta = np.pi/2
+        Rotation = np.array([[np.cos(theta),-np.sin(theta)],
+                             [np.sin(theta),np.cos(theta)]])
+        a -= center
+        b -= center
+        a = Rotation@a
+        b = Rotation@b
+        Sigma_rho = np.array([[V1,rho*np.sqrt(V1*V2)], [rho*np.sqrt(V1*V2), V2]])
+        ax = axes[0][0]
+        draw_oriented_ellipse( Sigma_rho, a, ax,color=color1,lw=3,order = 13)
+        draw_oriented_ellipse( Sigma, a, ax,color=color2,lw=3, order = 12, style ='--')
+        draw_oriented_ellipse( Sigma_rho, b, ax,color=color1,lw=3,order = 13)
+        draw_oriented_ellipse( Sigma, b, ax,color=color2,lw=3, order = 12, style ='--')
+        ax.scatter(a[0], a[1], color=color1, label='State A Mean',zorder=13)
+        ax.scatter(b[0], b[1], color=color1, label='State B Mean',zorder=13)
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.set_xlabel('', size=20)
+        ax.set_ylabel('Responce Cell B', size=label_size)
+        ax.set_xticklabels([])
+        ax.set_yticklabels([])
+        ax.set_title(r"$\theta = 45°$",size = 15)
+        # ax.set_xlim(dx, dx)
+        # ax.set_ylim(dx, dx)
+        
+        theta = -np.deg2rad(25)
+        ax = axes[0][1]
+        Rotation = np.array([[np.cos(theta),-np.sin(theta)],[np.sin(theta),np.cos(theta)]])
+        a = Rotation@a
+        b = Rotation@b
+        draw_oriented_ellipse( Sigma_rho, a, ax, color=color1, lw=3, order = 13)
+        draw_oriented_ellipse( Sigma,     a, ax, color=color2, lw=3, order = 12, style ='--')
+        draw_oriented_ellipse( Sigma_rho, b, ax, color=color1, lw=3, order = 13)
+        draw_oriented_ellipse( Sigma,     b, ax, color=color2, lw=3, order = 12, style ='--')
+        ax.scatter(a[0], a[1], color=color1, label='State A Mean',zorder=13)
+        ax.scatter(b[0], b[1], color=color1, label='State B Mean',zorder=13)
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.set_xlabel('', size=20)
+        ax.set_ylabel('', size=20)
+        ax.set_xlim(-6.6,-0.43)
+        ax.set_ylim(1.2,7.37)
+        ax.set_title(r"$\theta = 20°$",size = 15)
+        ax.set_xticklabels([])
+        ax.set_yticklabels([])        
+        ax.set_xlim(-dx-0.05,dx-0.05)
+        ax.set_ylim(-dx+0.2,dx+0.2)
+
+        a = np.array([1, 6]).astype(float)
+        b = np.array([3, 4]).astype(float) 
+        center = 0.5*(a+b)
+        a -= center
+        b -= center
+        ax = axes[1][0]
+        draw_oriented_ellipse( Sigma_rho, a, ax,color=color1,lw=3,order = 13)
+        draw_oriented_ellipse( Sigma, a, ax,color=color2,lw=3, order = 12, style ='--')
+        draw_oriented_ellipse( Sigma_rho, b, ax,color=color1,lw=3,order = 13)
+        draw_oriented_ellipse( Sigma, b, ax,color=color2,lw=3, order = 12, style ='--')
+        ax.scatter(a[0], a[1], color=color1, label='State A Mean',zorder=13)
+        ax.scatter(b[0], b[1], color=color1, label='State B Mean',zorder=13)
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.set_xlabel('Response Cell A', size=label_size)
+        ax.set_ylabel('Responce Cell B', size=label_size)
+        ax.set_xticklabels([])
+        ax.set_yticklabels([])
+        ax.set_title(r"$\theta = -45°$",size = 15)
+        ax.set_xlim(-dx,dx)
+        ax.set_ylim(-dx,dx)
+
+        a = np.array([1, 6]).astype(float)
+        b = np.array([3, 4]).astype(float) 
+        a -= center
+        b -= center
+        theta = np.deg2rad(25)
+        Rotation = np.array([[np.cos(theta),-np.sin(theta)],[np.sin(theta),np.cos(theta)]])
+        a = Rotation@a
+        b = Rotation@b
+        ax = axes[1][1]
+        draw_oriented_ellipse( Sigma_rho, a, ax,color=color1,lw=3,order = 13)
+        draw_oriented_ellipse( Sigma, a, ax,color=color2,lw=3, order = 12, style ='--')
+        draw_oriented_ellipse( Sigma_rho, b, ax,color=color1,lw=3,order = 13)
+        draw_oriented_ellipse( Sigma, b, ax,color=color2,lw=3, order = 12, style ='--')
+        ax.scatter(a[0], a[1], color=color1, label='State A Mean',zorder=13)
+        ax.scatter(b[0], b[1], color=color1, label='State B Mean',zorder=13)
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.set_xlabel('Response Cell A', size=label_size)
+        ax.set_ylabel('', size=20)
+        ax.set_xticklabels([])
+        ax.set_yticklabels([])
+        ax.set_title(r"$\theta = -20°$",size = 15)
+        ax.set_xlim(-dx-0.05,dx-0.05)
+        ax.set_ylim(-dx+0.2,dx+0.2)
+
+        # Save first panel
+        OUTFIG = f"{OUTDIR}/figure1_panelA.pdf"
+        plt.savefig(OUTFIG, dpi = 300, bbox_inches = 'tight')
+        print("Saved plot ",OUTFIG)
+    else:
+        pass
+    
+    # <------------------------------- SECOND PANEL   
+    if not skip_panelB:
+        
+        N = 100
+
+        # Create figure with 1 panel
+        fig, ax = plt.subplots(1, 1, figsize=(6, 6))
+    
+        LINEWIDTH = 5
+        V1 = V2 = 1
+        # Compute and plot color mapping at rho_s = -1            
+        a = np.array([1, 6])
+        b = np.array([3, 4])
+        theta = 0.4
+        Rotation = np.array([[np.cos(theta),-np.sin(theta)],[np.sin(theta),np.cos(theta)]])
+        a = Rotation@a
+        b = Rotation@b
+        norm_square = (b-a).dot(b-a)
+        Sigma = np.array([[V1,0], [0, V2]])
+        rhos = np.linspace(-1.0, 1.0,2*N+1)[1:-1]
+        I0 = compute_mutual_information(b-a, Sigma)
+        I  = []
+        variance = lambda x : np.array([[V1, x*np.sqrt(V1*V2)],
+                                       [x*np.sqrt(V1*V2), V2]])
+        Sigma_correlated = np.array(list(map(variance,rhos)))
+        MI_f = lambda x : compute_mutual_information(b-a, x)
+        I = np.array(list(map(MI_f,Sigma_correlated)))
+        values = ( (I/I0) - 1 )*100
+        values = np.ma.masked_invalid(values)
+        norm = mcolors.Normalize(vmin=-6, vmax=6)
+        cmap = cm.coolwarm
+        for i in range(len(rhos)-1):
+            ax.plot([-1,-1], [rhos[i+1],rhos[i]], color=cmap(norm(values[i])), linewidth=LINEWIDTH)
+
+        # Compute and plot color mapping at rho_s = 1   
+        theta = np.pi/2
+        Rotation = np.array([[np.cos(theta),-np.sin(theta)],[np.sin(theta),np.cos(theta)]])
+        a = Rotation@a
+        b = Rotation@b
+        rhos = np.linspace(-1.0, 1.0,2*N+1)[1:-1]
+        I0 = compute_mutual_information(b-a, Sigma)
+        I  = []
+        variance = lambda x : np.array([[V1, x*np.sqrt(V1*V2)],
+                                       [x*np.sqrt(V1*V2), V2]])
+        Sigma_correlated = np.array(list(map(variance,rhos)))
+        MI_f = lambda x : compute_mutual_information(b-a, x)
+        I = np.array(list(map(MI_f,Sigma_correlated)))
+        values = ( (I/I0) - 1 )*100
+        values = np.ma.masked_invalid(values)
+        # Second panel (main plot)
+        for i in range(len(rhos)-1):
+            ax.plot([ 1, 1], [rhos[i+1],rhos[i]], color=cmap(norm(values[i])), linewidth=LINEWIDTH)
+
+        # Compute and plot color mapping at rho_s = 0
+        a = np.array([1, 6])
+        b = np.array([3, 4])
+        theta -= np.pi/4
+        Rotation = np.array([[np.cos(theta),-np.sin(theta)],[np.sin(theta),np.cos(theta)]])
+        a = Rotation@a
+        b = Rotation@b
+        rhos = np.linspace(-1.0, 1.0,2*N+1)[1:-1]
+        I0 = compute_mutual_information(b-a, Sigma)
+        I  = []
+        variance = lambda x : np.array([[V1, x*np.sqrt(V1*V2)],
+                                       [x*np.sqrt(V1*V2), V2]])
+        Sigma_correlated = np.array(list(map(variance,rhos)))
+        MI_f = lambda x : compute_mutual_information(b-a, x)
+        I = np.array(list(map(MI_f,Sigma_correlated)))
+        values = ( (I/I0) - 1 )*100
+        values = np.ma.masked_invalid(values)
+        # Second panel (main plot)
+        for i in range(len(rhos)-1):
+            ax.plot([ 0, 0], [rhos[i+1],rhos[i]], color=cmap(norm(values[i])), linewidth=LINEWIDTH)
+            
+        
+        # Add colorbar
+        sm = cm.ScalarMappable(cmap=cmap, norm=norm)
+        sm.set_array([])
+        cb = fig.colorbar(sm, ax=ax, orientation='vertical')
+        cb.set_label( 'Synergy [%]', size = 18)
+        ax.set_xlim(-1.02, 1.02)
+        ax.set_ylim(-1, 1)
+        ax.axhline(0, c='black',lw=0.5)
+        ax.axvline(0, c='black',lw=0.5)
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.set_ylabel("Noise Correlation", size = 18)
+        ax.set_xlabel("Signal Correlation", size= 18)
+        plt.xticks(size=15)
+        plt.yticks(size=15)
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+
+        plt.tight_layout()
+        
+        # Save second panel
+        OUTFIG = f"{OUTDIR}/figure1_panelB.pdf"
+        plt.savefig(OUTFIG, dpi = 300, bbox_inches = 'tight')
+        print("Saved plot ",OUTFIG)
+    else:
+        pass
+        
+    if not skip_panelC:
+        N = 1000
+        cmap = cm.coolwarm
+        norm = mcolors.Normalize(vmin=-6, vmax=6)
+
+        # Create figure with 1 panel
+        fig, ax = plt.subplots(1, 1, figsize=(6, 6))
+    
+        LINEWIDTH = 5
+        V1 = V2 = 1
+        # Compute and plot color mapping at rho_s = -1            
+        a0 = np.array([1, 6])
+        b0 = np.array([3, 4])
+        rhos = np.linspace(-1.0, 1.0,2*N+1)[1:-1]
+        Sigma = np.array([[V1,0], [0, V2]])
+        compute_pc = lambda x: 0.5*(1+erf(np.sqrt(d_prime(b-a, x))/(2*np.sqrt(2))))
+        for dtheta in [5, 15, 25]:
+            theta = np.pi/2 + np.deg2rad(dtheta)
+            Rotation = np.array([[np.cos(theta),-np.sin(theta)],[np.sin(theta),np.cos(theta)]])
+            a = Rotation@a0
+            b = Rotation@b0
+            d = np.sqrt(d_prime(b-a, Sigma))/(2*np.sqrt(2))    
+            pc = 0.5*(1+erf(d))
+            variance = lambda x : np.array([[V1, x*np.sqrt(V1*V2)],
+                                           [x*np.sqrt(V1*V2), V2]])
+            Sigma_correlated = np.array(list(map(variance,rhos)))
+            pc_corr = np.array(list(map(compute_pc,Sigma_correlated)))
+            pc_synergy = ((pc_corr/pc)-1)*100
+            for x,y in zip(rhos, pc_synergy ):
+                ax.scatter(x,y , color=cmap(norm(y)))
+
+        plt.xlabel("Noise Correlation", size = 18)
+        plt.ylabel("Difference in Percent Correct [%]", size = 18)
+        plt.axhline(0,c='black')
+        plt.axvline(0,c='black')
+        plt.xlim(0,None)        
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+
+
+        # Save third panel
+        OUTFIG = f"{OUTDIR}/figure1_panelC.pdf"
+        plt.savefig(OUTFIG, dpi = 300, bbox_inches = 'tight')
+        print("Saved plot ",OUTFIG)
+    else:
+        pass
+        
+    if not skip_panelD:
+        config = {  'rho'           : 'poisson',
+                    'alpha'         : 0.5,
+                    'beta'          : 0.1,
+                    'V'             : 1,
+                    'function'      : 'fvm',
+                    'A'             : 0.17340510276921817,
+                    'width'         : 0.2140327993142855,
+                    'flatness'      : 0.6585904840291591,
+                    'b'             : 1.2731732385019432,
+                    'center'        : 2.9616211149125977 - 0.21264734641020677,
+                    'center_shift'  : np.pi/4,
+                    }
+        system = NeuralSystem(config)
+        system2 = NeuralSystem(config)
+        system2.alpha = 0.0
+        system2.generate_variance_matrix()
+
+        plot_simulation_single_panel(system, [],plot_ticks=False)
+        draw_comparison(system, system2,plt.gca(),np.pi)
+        OUTFIG = f"{OUTDIR}/figure1_panelD_1.pdf"
+        plt.savefig( OUTFIG, dpi = 300, bbox_inches = 'tight')
+        print("Saved plot ", OUTFIG)
+        
+        config = {  'rho'           : 'poisson',
+                    'alpha'         : 0.5,
+                    'beta'          : 0.1,
+                    'V'             : 1,
+                    'function'      : 'fvm',
+                    'A'             : 0.17340510276921817,
+                    'width'         : 0.2140327993142855,
+                    'flatness'      : 0.6585904840291591,
+                    'b'             : 1.2731732385019432,
+                    'center'        : 2.9616211149125977 - 0.21264734641020677 - 0.39276734641020683,
+                    'center_shift'  : np.pi/2,
+                    }
+        system = NeuralSystem(config)
+        system2 = NeuralSystem(config)
+        system2.alpha = 0.0
+        system2.generate_variance_matrix()
+        
+        plot_simulation_single_panel(system, [],plot_ticks=False)
+        draw_comparison(system, system2,plt.gca(),np.pi)
+        OUTFIG = f"{OUTDIR}/figure1_panelD_2.pdf"
+        plt.savefig( OUTFIG, dpi = 300, bbox_inches = 'tight')
+        print("Saved plot ", OUTFIG)
+        
+        fig, ax = plt.subplots(1, 1, figsize=(6, 6))
+        ax = plt.gca()
+        plt.plot(np.rad2deg(THETA), system.mu[0](THETA), label = 'Cell 1',lw = 5)
+        plt.plot(np.rad2deg(THETA), system.mu[1](THETA), label = 'Cell 2',lw = 5)
+        plt.xlabel("Stimulus [°]", size = 30)
+        plt.ylabel("Response", size = 30)
+        ax.set_yticklabels([])
+        plt.xticks(size = 20)
+        plt.xlim(0,360)
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        OUTFIG = f"{OUTDIR}/figure1_panelD_4.pdf"
+        plt.savefig( OUTFIG, dpi = 300, bbox_inches = 'tight')
+        print("Saved plot ", OUTFIG)
+
+        config = {  'rho'           : 'poisson',
+                    'alpha'         : 0.5,
+                    'beta'          : 0.1,
+                    'V'             : 1,
+                    'function'      : 'fvm',
+                    'A'             : 0.17340510276921817,
+                    'width'         : 0.2140327993142855,
+                    'flatness'      : 0.6585904840291591,
+                    'b'             : 1.2731732385019432,
+                    'center'        : 2.9616211149125977 - 0.21264734641020677,
+                    'center_shift'  : np.pi/4,
+                    }
+        system = NeuralSystem(config)
+        fig, ax = plt.subplots(1, 1, figsize=(6, 6))
+        ax = plt.gca()
+        plt.plot(np.rad2deg(THETA), system.mu[0](THETA), label = 'Cell 1',lw = 5)
+        plt.plot(np.rad2deg(THETA), system.mu[1](THETA), label = 'Cell 2',lw = 5)
+        plt.xlabel("Stimulus [°]", size = 30)
+        plt.ylabel("Response", size = 30)
+        ax.set_yticklabels([])
+        plt.xticks(size = 20)
+        plt.xlim(0,360)
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        OUTFIG = f"{OUTDIR}/figure1_panelD_3.pdf"
+        plt.savefig( OUTFIG, dpi = 300, bbox_inches = 'tight')
+        print("Saved plot ", OUTFIG)
+
+    else:
+        pass
+    return
+
+    
 def paper_plot_figure_2( system, improvement_list = [], file = None, 
                          OUTDIR = "/home/paolos/Pictures/decoding/paper",
                          skip_frame = False, skip_cases = False, skip_errors = False):

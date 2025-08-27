@@ -12,9 +12,9 @@ import pickle
 config = {  
             'label'         : 'adaptive_selected',
             'rho'           : "adaptive" ,
-            # 'alpha'         : np.arange(0.14,1.0,0.04),
-            'alpha'         : np.arange(0.58,1.0,0.04),
-            'beta'          : np.array([  0.1 ]),
+            'alpha'         : np.arange(0.14,1.0,0.04),
+            # 'alpha'         : np.arange(0.60,1.0,0.04),
+            'beta'          : np.array([  0.3, 0.15 ]),
             'function'      : 'fvm',
             'A'             : 0.17340510276921817,
             'width'         : 0.2140327993142855,

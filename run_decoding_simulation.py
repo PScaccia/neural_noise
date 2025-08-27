@@ -58,7 +58,7 @@ def main( config, args):
         # Run single simulation with alpha = a and beta = b
         if check_simulated_noise(b):
             # If it has already ran the independent case for that noise take that
-            old_case = [ x for x in results.keys() if 'a_{:.2f}_b_{:.2f}'.format(a,b) in x][0]
+            old_case = [ x for x in results.keys() if '_b_{:.2f}'.format(b) in x][-1]
             results['a_{:.2f}_b_{:.2f}'.format(a,b)] = [ simulation(case, args,skip_independent = True)[0], 
                                                          results[old_case][1]   ]
         else:
