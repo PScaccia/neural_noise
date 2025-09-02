@@ -102,15 +102,80 @@ def compute_MSE(theta_sampling, theta, mode = 'cos', errors = False):
         else:
             return MSE, None
 
-# # Parametri
-# num_samples = 10000
-# proposal_width = 1.0
+def compute_innovation(results, errors = False):
+    from network import THETA
+    
+    alphas = []
+    betas  = []
+    R      = []
+    R_err  = []
+    
+    print("Reading results...")
+    for i,(label, sampling) in enumerate(results.items()):
+                if 'config' in label: continue
 
-# # Calcola l'integrale
-# integral, samples = integrate_metropolis(target_function, num_samples, proposal_width)
+                a,b=label.split('_')[1::2]
+                try:
+                    alphas.append(float(a))
+                    betas.append(float(b))
+                except ValueError:
+                    continue
+                
+                # Compute MSE (default = MSE)                
+                MSE, MSE_error               = compute_MSE( np.array( sampling[0,:,:]),  THETA, mode = 'mse', errors = errors)
+                MSE_control, MSE_control_err = compute_MSE( np.array( sampling[1,:,:]),  THETA, mode = 'mse', errors = errors)
+                    
+                # Smooth with Savitzky-Golay filter 
+                # MSE = circular_moving_average(THETA, MSE,15)
+                # MSE_control = circular_moving_average(THETA, MSE_control,15)
 
-# # Visualizza i risultati
-# print(f"Approssimazione dell'integrale: {integral}")
+                # MSE         = savgol_filter(MSE,         window_length=11, polyorder=3)
+                # MSE_control = savgol_filter(MSE_control, window_length=11,  polyorder=3)
+                                
+                impr = (1 - (MSE/MSE_control))*100 
+                R.append(impr)
 
-# # Istogramma dei campioni e la funzione target
-# x = np.linspace(-4, 4, 500)
+                if errors:
+                    impr_err = (100/np.abs(MSE_control))*np.sqrt( (MSE_error**2 + (MSE*MSE_control_err)**2) )
+                    R_err.append( impr_err )
+
+    return np.array(alphas), np.array(betas), np.array(R), np.array(R_err)
+
+def d_prime_squared(vector, Sigma):
+    invSigma = np.linalg.inv(Sigma)
+    return vector@invSigma@vector
+
+def compute_2AFC_mutual_information(vector, Sigma):
+    from scipy.special import erf
+    
+    d = np.sqrt(d_prime_squared(vector, Sigma))/(2*np.sqrt(2))    
+    pe = 0.5*(1-erf(d))    
+    return 1 + pe*np.log(pe) + (1-pe)*np.log((1-pe))
+
+def simulate_2AFC(V1 = 0.1, V2 = 0.1, n_theta_points = 360, n_rho_points = 500):
+    Sigma = np.array([[V1,0], [0, V2]])
+
+    a = np.array([-np.sqrt(2), 0.])
+    b = np.array([+np.sqrt(2), 0.])
+
+    angles = np.linspace(-np.pi/4,np.pi/4,n_theta_points)
+    rhos   = np.linspace(-0.99999,0.99999,n_rho_points)
+    cov_matrix = lambda x : np.array([[V1, x*np.sqrt(V1*V2)],
+                                   [x*np.sqrt(V1*V2), V2]])
+
+    angle_grid, rho_grid = np.meshgrid(angles,rhos)
+    synergy_grid = np.zeros_like(angle_grid)
+
+    for i_row, (theta_row,rho_row) in enumerate(zip(angle_grid,rho_grid)):
+        for i_col, (theta,rho) in enumerate( zip(theta_row, rho_row) ):
+            Rotation = np.array([[np.cos(theta),-np.sin(theta)],
+                                 [np.sin(theta),np.cos(theta)]])
+            _local_a = Rotation@a
+            _local_b = Rotation@b
+            diff = _local_b - _local_a
+            
+            MI_correlated  = compute_2AFC_mutual_information(diff, cov_matrix(rho))
+            MI_independent = compute_2AFC_mutual_information(diff, Sigma)
+            synergy_grid[i_row][i_col] = ((MI_correlated/MI_independent) - 1)*100
+        
+    return angle_grid, rho_grid, np.ma.masked_invalid(synergy_grid)

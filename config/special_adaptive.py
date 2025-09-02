@@ -12,9 +12,9 @@ import pickle
 config = {  
             'label'         : 'adaptive_selected',
             'rho'           : "adaptive" ,
-            'alpha'         : np.arange(0.14,1.0,0.04),
-            # 'alpha'         : np.arange(0.60,1.0,0.04),
-            'beta'          : np.array([  0.3, 0.15 ]),
+            # 'alpha'         : np.arange(0.56,1.0,0.04),
+            'alpha'         : np.arange(0.73,0.86,0.02),
+            'beta'          : np.array([  0.1, 0.15 ]),
             'function'      : 'fvm',
             'A'             : 0.17340510276921817,
             'width'         : 0.2140327993142855,
@@ -22,7 +22,7 @@ config = {
             'b'             : 1.2731732385019432,
             'center'        : 2.9616211149125977 - 0.21264734641020677,
             'center_shift'  : np.pi/4,
-            'N'             : 10000,
+            'N'             : 50000,
             'int_step'      : 100
             }
 pkl_name = __file__.replace('.py','.pkl')

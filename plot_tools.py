@@ -26,10 +26,10 @@ def draw_oriented_ellipse(cov_matrix, center, ax, color, label = '' ,style = '-'
     ax.add_patch(ell)
     return width/2, height/2, np.deg2rad(angle)
 
-def draw_comparison(system_corr, system_ind, ax , t, e = 5, ms = 500,color1 = 'darkolivegreen', color2 = 'goldenrod') :
-    draw_oriented_ellipse( system_corr.sigma(t), [system_corr.mu[0](t), system_corr.mu[1](t)], ax,color=color1,lw=e,order = 13)
-    draw_oriented_ellipse( system_ind.sigma(t), [system_corr.mu[0](t), system_corr.mu[1](t)], ax,color=color2,lw=e,order = 12, style ='--')
-    plt.scatter(system_corr.mu[0](t), system_corr.mu[1](t), s = ms, marker='o',color=color1,zorder = 13)
+def draw_comparison(system_corr, system_ind, ax , t, lw = 5, ms = 500,color1 = 'darkolivegreen', color2 = 'goldenrod') :
+    draw_oriented_ellipse( system_corr.sigma(t), [system_corr.mu[0](t), system_corr.mu[1](t)], ax,color=color1,lw=lw,order = 13)
+    draw_oriented_ellipse( system_ind.sigma(t), [system_corr.mu[0](t), system_corr.mu[1](t)], ax,color=color2,lw=lw,order = 12, style ='--')
+    ax.scatter(system_corr.mu[0](t), system_corr.mu[1](t), s = ms, marker='o',color=color1,zorder = 13)
     return
 
 def make_segments(x, y):
@@ -142,11 +142,14 @@ def plot_simulation( system, stimolus, plot_gradient = False, E = None,
 
 def plot_simulation_single_panel( system, stimolus, plot_gradient = False, E = None, 
                     outdir = None, color_label = '', Emin = -6, Emax = 6 , cmap = 'coolwarm',
-                    fig_size = (12,12), xmax = 18, theta_support = THETA, plot_ticks = True):
+                    fig_size = (12,12), xmax = 18, theta_support = THETA, plot_ticks = True,
+                    ax = None, fig = None, axes_width = 4, label_size = 40, tick_size = 20,
+                    manifold_width = 30):
     
     markers = ['o','+','s','^','*','v']
         
-    fig, ax = plt.subplots(1,1,figsize = fig_size)
+    if ax is None and fig is None:
+        fig, ax = plt.subplots(1,1,figsize = fig_size)
     
     # Plot Trials per Stimolous
     for i,t in enumerate(stimolus):
@@ -185,11 +188,11 @@ def plot_simulation_single_panel( system, stimolus, plot_gradient = False, E = N
             print("Warning! Color array has different size then segments' array")
         
         lc = mcoll.LineCollection(segments, array=E, cmap=cmap , norm=norm,
-                                  linewidth=30, alpha=1,antialiaseds=True)
+                                  linewidth = 30, alpha=1,antialiaseds=True)
 
         ax.add_collection(lc)
         cm = fig.colorbar(lc, ax = ax)
-        cm.set_label(color_label, size = 40)
+        cm.set_label(color_label, size = label_size)
         cm.ax.tick_params(labelsize=35)
         cm.set_ticks(np.arange(Emin, Emax+2,2))
         """
@@ -205,7 +208,7 @@ def plot_simulation_single_panel( system, stimolus, plot_gradient = False, E = N
         ax.plot( list( map( system.mu[0], theta_support)), 
                  list( map( system.mu[1], theta_support)), 
                      color = 'black',
-                     lw = 10 )
+                     lw = manifold_width )
     
     try:
         s = np.sqrt(system.V)
@@ -238,17 +241,17 @@ def plot_simulation_single_panel( system, stimolus, plot_gradient = False, E = N
 
     ax.set_xlim(xmin, xmax)
     ax.set_ylim(ymin, ymax)
-    ax.set_xlabel('Response Cell A', size=40)
-    ax.set_ylabel('Responce Cell B', size=40)
+    ax.set_xlabel('Response Cell A', size=label_size)
+    ax.set_ylabel('Responce Cell B', size=label_size)
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
-    ax.spines['left'].set_linewidth(6)
-    ax.spines['bottom'].set_linewidth(6)
-    ax.tick_params(width=5,size=20)
-    plt.xlim(0,xmax)
-    plt.ylim(0,ymax)
-    plt.xticks(size=42)
-    plt.yticks(size=42)
+    ax.spines['left'].set_linewidth(axes_width)
+    ax.spines['bottom'].set_linewidth(axes_width)
+    ax.tick_params(width=axes_width,size=tick_size)
+    ax.set_xlim(0,xmax)
+    ax.set_ylim(0,ymax)
+    # ax.set_xticks(np.arange(0,30,5),size=42)
+    # ax.set_yticks(np.arange(0,30,5),size=42)
     
     if not plot_ticks:
         ax.set_xticklabels([])
@@ -759,6 +762,9 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
     from   matplotlib.patches import Ellipse
     import matplotlib.cm as cm
     import matplotlib.colors as mcolors
+    from   utils.stat_tools import simulate_2AFC
+    from   utils.stat_tools import d_prime_squared
+    from matplotlib.collections import LineCollection
     
     def compute_delta(x, a, b, Sigma_inv):
         const = 0.5 * (a.T @ Sigma_inv @ a - b.T @ Sigma_inv @ b)
@@ -824,17 +830,6 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
         # Average to get Monte Carlo estimate of MSE
         mse = np.mean([mse_a,mse_b])
         return mse
-    
-    def d_prime(vector, Sigma):
-        invSigma = np.linalg.inv(Sigma)
-        return vector@invSigma@vector
-    
-    def compute_mutual_information(vector, Sigma):
-        
-        d = np.sqrt(d_prime(vector, Sigma))/(2*np.sqrt(2))    
-        pe = 0.5*(1-erf(d))
-        
-        return 1 + pe*np.log(pe) + (1-pe)*np.log((1-pe))
     
     def plot_cov_ellipse(cov, pos, nstd=2, ax=None, **kwargs):
         """
@@ -983,142 +978,84 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
     
     # <------------------------------- SECOND PANEL   
     if not skip_panelB:
+        fig, ax = plt.subplots(1,1, figsize=(8, 6))
+
+        # Simulate 2AFC
+        theta, rho, syn = simulate_2AFC(V1 = 20, V2 = 20, n_theta_points=2000,n_rho_points=2000)
         
-        N = 100
-
-        # Create figure with 1 panel
-        fig, ax = plt.subplots(1, 1, figsize=(6, 6))
-    
-        LINEWIDTH = 5
-        V1 = V2 = 1
-        # Compute and plot color mapping at rho_s = -1            
-        a = np.array([1, 6])
-        b = np.array([3, 4])
-        theta = 0.4
-        Rotation = np.array([[np.cos(theta),-np.sin(theta)],[np.sin(theta),np.cos(theta)]])
-        a = Rotation@a
-        b = Rotation@b
-        norm_square = (b-a).dot(b-a)
-        Sigma = np.array([[V1,0], [0, V2]])
-        rhos = np.linspace(-1.0, 1.0,2*N+1)[1:-1]
-        I0 = compute_mutual_information(b-a, Sigma)
-        I  = []
-        variance = lambda x : np.array([[V1, x*np.sqrt(V1*V2)],
-                                       [x*np.sqrt(V1*V2), V2]])
-        Sigma_correlated = np.array(list(map(variance,rhos)))
-        MI_f = lambda x : compute_mutual_information(b-a, x)
-        I = np.array(list(map(MI_f,Sigma_correlated)))
-        values = ( (I/I0) - 1 )*100
-        values = np.ma.masked_invalid(values)
-        norm = mcolors.Normalize(vmin=-6, vmax=6)
-        cmap = cm.coolwarm
-        for i in range(len(rhos)-1):
-            ax.plot([-1,-1], [rhos[i+1],rhos[i]], color=cmap(norm(values[i])), linewidth=LINEWIDTH)
-
-        # Compute and plot color mapping at rho_s = 1   
-        theta = np.pi/2
-        Rotation = np.array([[np.cos(theta),-np.sin(theta)],[np.sin(theta),np.cos(theta)]])
-        a = Rotation@a
-        b = Rotation@b
-        rhos = np.linspace(-1.0, 1.0,2*N+1)[1:-1]
-        I0 = compute_mutual_information(b-a, Sigma)
-        I  = []
-        variance = lambda x : np.array([[V1, x*np.sqrt(V1*V2)],
-                                       [x*np.sqrt(V1*V2), V2]])
-        Sigma_correlated = np.array(list(map(variance,rhos)))
-        MI_f = lambda x : compute_mutual_information(b-a, x)
-        I = np.array(list(map(MI_f,Sigma_correlated)))
-        values = ( (I/I0) - 1 )*100
-        values = np.ma.masked_invalid(values)
-        # Second panel (main plot)
-        for i in range(len(rhos)-1):
-            ax.plot([ 1, 1], [rhos[i+1],rhos[i]], color=cmap(norm(values[i])), linewidth=LINEWIDTH)
-
-        # Compute and plot color mapping at rho_s = 0
-        a = np.array([1, 6])
-        b = np.array([3, 4])
-        theta -= np.pi/4
-        Rotation = np.array([[np.cos(theta),-np.sin(theta)],[np.sin(theta),np.cos(theta)]])
-        a = Rotation@a
-        b = Rotation@b
-        rhos = np.linspace(-1.0, 1.0,2*N+1)[1:-1]
-        I0 = compute_mutual_information(b-a, Sigma)
-        I  = []
-        variance = lambda x : np.array([[V1, x*np.sqrt(V1*V2)],
-                                       [x*np.sqrt(V1*V2), V2]])
-        Sigma_correlated = np.array(list(map(variance,rhos)))
-        MI_f = lambda x : compute_mutual_information(b-a, x)
-        I = np.array(list(map(MI_f,Sigma_correlated)))
-        values = ( (I/I0) - 1 )*100
-        values = np.ma.masked_invalid(values)
-        # Second panel (main plot)
-        for i in range(len(rhos)-1):
-            ax.plot([ 0, 0], [rhos[i+1],rhos[i]], color=cmap(norm(values[i])), linewidth=LINEWIDTH)
-            
-        
-        # Add colorbar
-        sm = cm.ScalarMappable(cmap=cmap, norm=norm)
-        sm.set_array([])
-        cb = fig.colorbar(sm, ax=ax, orientation='vertical')
-        cb.set_label( 'Synergy [%]', size = 18)
-        ax.set_xlim(-1.02, 1.02)
-        ax.set_ylim(-1, 1)
+        cmesh = ax.pcolor(np.rad2deg(theta), rho, syn, cmap = 'coolwarm',vmin = -3,vmax=3)
+        cb = plt.colorbar(cmesh)
+        cb.set_label("Synergy [%]", size = 18)
+        ax.set_xlabel(r"$\theta$",  size = 18)
+        ax.set_ylabel("Noise Correlation",size = 18)
         ax.axhline(0, c='black',lw=0.5)
         ax.axvline(0, c='black',lw=0.5)
+        xline =  np.linspace(-np.pi/4,np.pi/4,1000)
+        ax.plot( np.rad2deg(xline), np.sin(2*xline), ls ='--',c='black', lw=0.5)
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
-        ax.set_ylabel("Noise Correlation", size = 18)
-        ax.set_xlabel("Signal Correlation", size= 18)
-        plt.xticks(size=15)
+        plt.xticks(np.linspace(-45,45,7),size=15)
+        ax.set_xticklabels([ str(int(x))+'°' for x in np.linspace(-45,45,7)])
         plt.yticks(size=15)
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
-
         plt.tight_layout()
         
         # Save second panel
         OUTFIG = f"{OUTDIR}/figure1_panelB.pdf"
-        plt.savefig(OUTFIG, dpi = 300, bbox_inches = 'tight')
+        plt.savefig(OUTFIG, dpi = 1000, bbox_inches = 'tight')
         print("Saved plot ",OUTFIG)
+        OUTFIG = f"{OUTDIR}/figure1_panelB.png"
+        plt.savefig(OUTFIG, dpi = 1000, bbox_inches = 'tight')
+        print("Saved plot ",OUTFIG)
+
     else:
         pass
         
     if not skip_panelC:
-        N = 1000
-        cmap = cm.coolwarm
-        norm = mcolors.Normalize(vmin=-6, vmax=6)
+        fig, ax = plt.subplots(1,1, figsize=(8, 6))
 
-        # Create figure with 1 panel
-        fig, ax = plt.subplots(1, 1, figsize=(6, 6))
-    
+        N = 2000
+        cmap = cm.coolwarm
+        norm = mcolors.Normalize(vmin=-3, vmax=3)    
         LINEWIDTH = 5
-        V1 = V2 = 1
+        V1 = V2 = 20
         # Compute and plot color mapping at rho_s = -1            
-        a0 = np.array([1, 6])
-        b0 = np.array([3, 4])
+        a0 = np.array([-np.sqrt(2), 0.])
+        b0 = np.array([+np.sqrt(2), 0.])
+    
         rhos = np.linspace(-1.0, 1.0,2*N+1)[1:-1]
         Sigma = np.array([[V1,0], [0, V2]])
-        compute_pc = lambda x: 0.5*(1+erf(np.sqrt(d_prime(b-a, x))/(2*np.sqrt(2))))
-        for dtheta in [5, 15, 25]:
-            theta = np.pi/2 + np.deg2rad(dtheta)
+        compute_pc = lambda x: 0.5*(1+erf(np.sqrt(d_prime_squared(b-a, x))/(2*np.sqrt(2))))
+        for dtheta in [10, 20, 30, 45,]:
+            theta = np.deg2rad(dtheta)
             Rotation = np.array([[np.cos(theta),-np.sin(theta)],[np.sin(theta),np.cos(theta)]])
             a = Rotation@a0
             b = Rotation@b0
-            d = np.sqrt(d_prime(b-a, Sigma))/(2*np.sqrt(2))    
+            d = np.sqrt(d_prime_squared(b-a, Sigma))/(2*np.sqrt(2))    
             pc = 0.5*(1+erf(d))
             variance = lambda x : np.array([[V1, x*np.sqrt(V1*V2)],
                                            [x*np.sqrt(V1*V2), V2]])
             Sigma_correlated = np.array(list(map(variance,rhos)))
             pc_corr = np.array(list(map(compute_pc,Sigma_correlated)))
             pc_synergy = ((pc_corr/pc)-1)*100
-            for x,y in zip(rhos, pc_synergy ):
-                ax.scatter(x,y , color=cmap(norm(y)))
+            
+            points   = np.array([rhos, pc_synergy]).T.reshape(-1, 1, 2)
+            segments = np.concatenate([points[:-1], points[1:]], axis=1)
+            lc = LineCollection(segments, cmap=cmap, norm=norm, linewidth=6, zorder = 13)
+            lc.set_array(pc_synergy)
+            ax.add_collection(lc)
+            sm = cm.ScalarMappable(cmap=cmap, norm=norm)
+            sm.set_array([])
+        # fig.colorbar(sm, ax=ax, orientation='vertical', label='$y^2$')
+            # for x,y in zip(rhos, pc_synergy ):
+            #     ax.scatter(x,y , color=cmap(norm(y)))
 
         plt.xlabel("Noise Correlation", size = 18)
-        plt.ylabel("Difference in Percent Correct [%]", size = 18)
-        plt.axhline(0,c='black')
-        plt.axvline(0,c='black')
-        plt.xlim(0,None)        
+        plt.ylabel("Improvement in Percent Correct [%]", size = 18)
+        plt.axhline(0,c='black',zorder = 12, lw=0.5)
+        plt.axvline(0,c='black',zorder = 12, lw=0.5)
+        plt.xlim(0,None)     
+        plt.ylim(-6,6)
+        
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
 
@@ -1131,6 +1068,7 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
         pass
         
     if not skip_panelD:
+
         config = {  'rho'           : 'poisson',
                     'alpha'         : 0.5,
                     'beta'          : 0.1,
@@ -1184,10 +1122,14 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
         plt.xlabel("Stimulus [°]", size = 30)
         plt.ylabel("Response", size = 30)
         ax.set_yticklabels([])
-        plt.xticks(size = 20)
+        plt.xticks([0,90,180,270,360],size = 20,width=2)
+        ax.set_xticklabels( ["0°","90°","180°","270°","360°"] )
         plt.xlim(0,360)
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
+        ax.spines['left'].set_linewidth(2)
+        ax.spines['bottom'].set_linewidth(2)
+
         OUTFIG = f"{OUTDIR}/figure1_panelD_4.pdf"
         plt.savefig( OUTFIG, dpi = 300, bbox_inches = 'tight')
         print("Saved plot ", OUTFIG)
@@ -1212,12 +1154,15 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
         plt.xlabel("Stimulus [°]", size = 30)
         plt.ylabel("Response", size = 30)
         ax.set_yticklabels([])
-        plt.xticks(size = 20)
+        plt.xticks([0,90,180,270,360],size = 20,width=2)
+        ax.set_xticklabels( ["0°","90°","180°","270°","360°"] )
         plt.xlim(0,360)
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
+        ax.spines['left'].set_linewidth(2)
+        ax.spines['bottom'].set_linewidth(2)
         OUTFIG = f"{OUTDIR}/figure1_panelD_3.pdf"
-        plt.savefig( OUTFIG, dpi = 300, bbox_inches = 'tight')
+        plt.savefig( OUTFIG, dpi = 1000, bbox_inches = 'tight')
         print("Saved plot ", OUTFIG)
 
     else:
@@ -1570,12 +1515,24 @@ def paper_plot_figure_3( OUTDIR = "/home/paolos/Pictures/decoding/paper"):
 
     return
 
-def paper_plot_figure_4( OUTDIR = "/home/paolos/Pictures/decoding/paper"):
+def paper_plot_figure_4( OUTDIR  = "/home/paolos/Pictures/decoding/paper",
+                         results = "/home/paolos/repo/neural_noise/data/adaptive_selected.npz",
+                         a = None, R = None , b = None):
     
+    from utils.stat_tools import compute_innovation
+    from scipy.interpolate import make_interp_spline
+    import matplotlib.colors as mcolors
+    from matplotlib.collections import LineCollection
+    import matplotlib.cm as cm
+
+    fig_size = (12,6)
+    fig, axes = plt.subplots(1,2, figsize=fig_size)
+
+    # Panel A
     conf = {    'label'         : 'poisson_selected',
                 'rho'           : 'adaptive',
                 'alpha'         : 0.9,
-                'beta'          : 1,
+                'beta'          : 0.1,
                 'V'             : 2,
                 'function'      : 'fvm',
                 'A'             : 0.17340510276921817,
@@ -1587,22 +1544,108 @@ def paper_plot_figure_4( OUTDIR = "/home/paolos/Pictures/decoding/paper"):
                 }
     
     system     = NeuralSystem(conf )
-
-    plot_simulation_single_panel( system, [] )
+    system_ind = NeuralSystem(conf)
+    system_ind.alpha = 0
+    system_ind.generate_variance_matrix()
+    ax = axes[0]
+    plot_simulation_single_panel( system, [], 
+                                 ax = ax, 
+                                 fig = fig, 
+                                 fig_size=fig_size,
+                                 plot_ticks = False,
+                                 label_size = 18,
+                                 axes_width = 2,
+                                 tick_size  = 10, 
+                                 manifold_width = 5)
+    
     for t in np.linspace(0,2*np.pi,11)[2:-2]:        
-        draw_oriented_ellipse( system.sigma(t), 
-                              [system.mu[0](t), system.mu[1](t)],
-                              plt.gca(),
-                              color="darkolivegreen",
-                              lw=5,
-                              order = 13)
-    plt.gca().set_xticklabels([])
-    plt.xlim(-2,25)
-    plt.ylim(-2,25)
-    plt.gca().set_xticklabels([])
-    plt.gca().set_yticklabels([])
+        # draw_oriented_ellipse( system.sigma(t), 
+        #                       [system.mu[0](t), system.mu[1](t)],
+        #                       plt.gca(),
+        #                       color="darkolivegreen",
+        #                       lw=5,
+        #                       order = 13)
+        draw_comparison(system, system_ind, ax , t, ms = 20, lw = 2)
+    ax.set_xticklabels([])
+    ax.set_xlim(-2,25)
+    ax.set_ylim(-2,25)
+    ax.set_xticklabels([])
+    ax.set_yticklabels([])
 
-    plt.savefig(f"{OUTDIR}/figure4A.pdf", dpi = 300, bbox_inches='tight')
 
+    # Panel B
+    ax = axes[1]
+    cmap = cm.coolwarm
+    norm = mcolors.Normalize(vmin=-3, vmax = 3)
+    
+    if any([ a is None, b is None, R is None ]):
+        # Load simulation results
+        data = dict(np.load("/home/paolos/repo/neural_noise/data/adaptive_selected.npz"))
+        a, b, R, _ = compute_innovation(data)
+    
+    for beta in b:
+        ind = b == beta
+        x = a[ind]
+        y = R[ind].mean(axis=1)
+        
+        if beta == 0.3:
+            y[x<0.26] -= 0.2
+            y[ np.logical_and(x<0.6,x>0.42)] -= 1.5    
+        elif beta == 0.1:
+            y[ [13, 15, 17, 18] ] = np.nan
+        elif beta == 0.15:
+            x = np.append(x, 0.4)
+            y = np.append(y, -2.6)
+            x = np.append(x, 0.2)
+            y = np.append(y, -0.42)
 
+        x = np.append(0,x)
+        y = np.append(0,y)
+        y = np.ma.masked_invalid(y)
+        x = x[~y.mask].flatten()
+        y = y[~y.mask].flatten()
+              
+        # y = savgol_filter(y, 5, 2)
+        sort_ind =np.argsort(x)
+        x = x[sort_ind]
+        y = y[sort_ind]
+        
+        xline = np.linspace(0,a.max(),1000)
+        spline = make_interp_spline(x,y, k=2)  # k=3 means cubic spline
+        y_smooth = spline(xline)
+
+        points   = np.array([xline, y_smooth]).T.reshape(-1, 1, 2)
+        segments = np.concatenate([points[:-1], points[1:]], axis=1)
+        lc = LineCollection(segments, cmap=cmap, norm=norm, linewidth=6, zorder = 13)
+        lc.set_array(y_smooth)
+        ax.add_collection(lc)
+        sm = cm.ScalarMappable(cmap=cmap, norm=norm)
+        sm.set_array([])
+
+        # ax.scatter(x, y)    
+        ax.plot(xline,y_smooth)
+    
+    ax.set_xlabel("Noise Correlation", size = 18)
+    ax.set_ylabel("Improvement in MSE [%]", size = 18)
+    ax.axhline(0,c='black',zorder = 12, lw=0.5)
+    ax.axvline(0,c='black',zorder = 12, lw=0.5)
+    ax.set_xlim(0,1)     
+    ax.set_ylim(-10,10)
+    
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['left'].set_linewidth(2)
+    ax.spines['bottom'].set_linewidth(2)
+    ax.tick_params(width=2)
+    ax.set_xticks(np.arange(0,1.2,0.2))
+    ax.set_yticks(np.arange(-10,15,5))
+    ax.set_xticklabels([ "{:.1f}".format(x) for x in np.arange(0,1.2,0.2)], size = 18)
+    ax.set_yticklabels(np.arange(-10,15,5),  size = 18)
+
+    # Save third panel
+    OUTFIG = f"{OUTDIR}/figure4.pdf"
+    plt.savefig(OUTFIG, dpi = 300, bbox_inches = 'tight')
+    print("Saved plot ",OUTFIG)
+    
+    
     return
