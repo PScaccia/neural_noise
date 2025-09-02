@@ -755,7 +755,7 @@ def plot_error_distr( error, other_errors = [] , label = '', other_labels = [],
 
 def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
                         skip_panelA = False, skip_panelB = False, skip_panelC = False,
-                        skip_panelD = False):
+                        skip_panelD = False, skip_panelE = False):
     from   scipy.stats import multivariate_normal
     from   scipy.special import expit  # Sigmoid function
     from   scipy.special import erf
@@ -764,7 +764,7 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
     import matplotlib.colors as mcolors
     from   utils.stat_tools import simulate_2AFC
     from   utils.stat_tools import d_prime_squared
-    from matplotlib.collections import LineCollection
+    from   matplotlib.collections import LineCollection
     
     def compute_delta(x, a, b, Sigma_inv):
         const = 0.5 * (a.T @ Sigma_inv @ a - b.T @ Sigma_inv @ b)
@@ -786,6 +786,7 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
         
         # Eigen-decomposition of covariance matrix
         eigvals, eigvecs = np.linalg.eigh(cov)
+        
         # Sort eigenvalues and eigenvectors
         order = eigvals.argsort()[::-1]
         eigvals, eigvecs = eigvals[order], eigvecs[:, order]
@@ -1059,7 +1060,6 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
 
-
         # Save third panel
         OUTFIG = f"{OUTDIR}/figure1_panelC.pdf"
         plt.savefig(OUTFIG, dpi = 300, bbox_inches = 'tight')
@@ -1081,6 +1081,7 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
                     'center'        : 2.9616211149125977 - 0.21264734641020677,
                     'center_shift'  : np.pi/4,
                     }
+
         system = NeuralSystem(config)
         system2 = NeuralSystem(config)
         system2.alpha = 0.0
@@ -1164,6 +1165,97 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
         OUTFIG = f"{OUTDIR}/figure1_panelD_3.pdf"
         plt.savefig( OUTFIG, dpi = 1000, bbox_inches = 'tight')
         print("Saved plot ", OUTFIG)
+    else:
+        pass
+
+    if not skip_panelE:
+        fig, ax = plt.subplots(1,1, figsize=(8, 6))
+        
+        theta_support = np.linspace(0, 2*np.pi, 360)
+        
+        delta_theta_ax = np.linspace(0.0,np.pi,200)
+        rho_ax         = np.linspace(-1,1,200)
+        rhos_ax        = np.zeros_like(delta_theta_ax)
+        
+        delta_theta_grid, rho_grid = np.meshgrid(delta_theta_ax, rho_ax)
+        synergy_grid = np.zeros_like(delta_theta_grid)
+
+        for i_row, (theta_row,rho_row) in enumerate(zip(delta_theta_grid, rho_grid)):
+            for i_col, (theta,rho) in enumerate( zip(theta_row, rho_row) ):
+                
+                config = {  'rho'           : 'poisson',
+                            'alpha'         : rho,
+                            'beta'          : 20,
+                            'function'      : 'fvm',
+                            'A'             : 0.17340510276921817,
+                            'width'         : 0.2140327993142855,
+                            'flatness'      : 0.6585904840291591,
+                            'b'             : 1.2731732385019432,
+                            'center'        : 2.9616211149125977 - 0.21264734641020677,
+                            'center_shift'  : theta,
+                            'N'             : 1000,
+                            'int_step'      : 100
+                            }
+                
+                system = NeuralSystem(config)                
+                system_ind = NeuralSystem(config)
+                system_ind.alpha = 0.0
+                system_ind.generate_variance_matrix()
+                mus = np.array([ [system.mu[0](t),system.mu[1](t)] for t in theta_support ])
+                
+                Sigma_s = np.cov(mus,rowvar=False)
+                Sigma_n = np.average(np.array(list( map(system.sigma, theta_support) )),axis=0)
+                V_n = np.average(np.array(list( map(system_ind.sigma, theta_support) )),axis=0)
+
+                MI_correlated  = 0.5*np.log( np.linalg.det(Sigma_s + Sigma_n) / np.linalg.det(Sigma_n))
+                
+                MI_independent = 0.5*np.log( np.linalg.det(Sigma_s + V_n) / np.linalg.det(V_n))
+                
+                synergy_grid[i_row][i_col] = ((MI_correlated/MI_independent) - 1)*100
+        syn = synergy_grid
+        for i,dt in enumerate(delta_theta_ax):
+                config = {  'rho'           : 'poisson',
+                            'alpha'         : 0.0,
+                            'beta'          : 20,
+                            'function'      : 'fvm',
+                            'A'             : 0.17340510276921817,
+                            'width'         : 0.2140327993142855,
+                            'flatness'      : 0.6585904840291591,
+                            'b'             : 1.2731732385019432,
+                            'center'        : 2.9616211149125977 - 0.21264734641020677,
+                            'center_shift'  : dt,
+                            'N'             : 1000,
+                            'int_step'      : 100
+                            }
+                system = NeuralSystem(config)
+                mus = np.array([ [system.mu[0](t),system.mu[1](t)] for t in theta_support ])
+                rhos_ax[i] = np.corrcoef(mus, rowvar=False)[1,0]
+                
+        rhos_grid, rhon_grid = np.meshgrid(rhos_ax, rho_ax)
+        
+        cmesh = ax.pcolor(rhos_grid, rhon_grid, syn, cmap = 'coolwarm',vmin = -3,vmax=3)
+        cb = plt.colorbar(cmesh)
+        cb.set_label("Synergy [%]", size = 18)
+        ax.set_xlabel("Signal Correlation",  size = 18)
+        ax.set_ylabel("Noise Correlation",   size = 18)
+        ax.axhline(0, c='black',lw=0.5)
+        ax.axvline(0, c='black',lw=0.5)
+        # xline =  np.linspace(-1,1,1000)
+        # ax.plot( x, np.sin(2*xline), ls ='--',c='black', lw=0.5)
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        plt.xticks(np.linspace(-1,1,7),size=15)
+        # ax.set_xticklabels([ str(int(x))+'°' for x in np.linspace(-45,45,7)])
+        plt.yticks(size=15)
+        plt.tight_layout()
+        
+        # Save second panel
+        OUTFIG = f"{OUTDIR}/figure1_panelE.pdf"
+        plt.savefig(OUTFIG, dpi = 1000, bbox_inches = 'tight')
+        print("Saved plot ",OUTFIG)
+        OUTFIG = f"{OUTDIR}/figure1_panelE.png"
+        plt.savefig(OUTFIG, dpi = 1000, bbox_inches = 'tight')
+        print("Saved plot ",OUTFIG)
 
     else:
         pass
@@ -1532,7 +1624,7 @@ def paper_plot_figure_4( OUTDIR  = "/home/paolos/Pictures/decoding/paper",
     conf = {    'label'         : 'poisson_selected',
                 'rho'           : 'adaptive',
                 'alpha'         : 0.9,
-                'beta'          : 0.1,
+                'beta'          : 0.09,
                 'V'             : 2,
                 'function'      : 'fvm',
                 'A'             : 0.17340510276921817,
@@ -1543,7 +1635,7 @@ def paper_plot_figure_4( OUTDIR  = "/home/paolos/Pictures/decoding/paper",
                 'center_shift'  : np.pi/4,
                 }
     
-    system     = NeuralSystem(conf )
+    system     = NeuralSystem(conf)
     system_ind = NeuralSystem(conf)
     system_ind.alpha = 0
     system_ind.generate_variance_matrix()
@@ -1558,7 +1650,8 @@ def paper_plot_figure_4( OUTDIR  = "/home/paolos/Pictures/decoding/paper",
                                  tick_size  = 10, 
                                  manifold_width = 5)
     
-    for t in np.linspace(0,2*np.pi,11)[2:-2]:        
+    # for t in np.linspace(0,2*np.pi,8)[1:-1]:        
+    for t in np.array([0.8975979 + 0.1 , 1.7951958 , 2.6927937-0.09 , 3.5903916 + 0.09 , 4.48798951 ,  5.38558741-0.1]):
         # draw_oriented_ellipse( system.sigma(t), 
         #                       [system.mu[0](t), system.mu[1](t)],
         #                       plt.gca(),
