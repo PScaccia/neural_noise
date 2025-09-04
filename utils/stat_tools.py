@@ -179,3 +179,61 @@ def simulate_2AFC(V1 = 0.1, V2 = 0.1, n_theta_points = 360, n_rho_points = 500):
             synergy_grid[i_row][i_col] = ((MI_correlated/MI_independent) - 1)*100
         
     return angle_grid, rho_grid, np.ma.masked_invalid(synergy_grid)
+
+def compute_bar_experiment_MI( noise = 10, N_points_deltat = 200, N_points_rhon = 200, mode = 'poisson'):
+    from network import NeuralSystem
+    
+    theta_support  = np.linspace(0, 2*np.pi, 600)
+    delta_theta_ax = np.linspace(-np.pi,np.pi,N_points_deltat)
+    rho_ax         = np.linspace(-1,1,N_points_rhon)
+    rhos_ax        = np.zeros_like(delta_theta_ax)
+    
+    delta_theta_grid, rho_grid = np.meshgrid(delta_theta_ax, rho_ax)
+    synergy_grid = np.zeros_like(delta_theta_grid)
+
+    for i_row, (theta_row,rho_row) in enumerate(zip(delta_theta_grid, rho_grid)):
+        for i_col, (theta,rho) in enumerate( zip(theta_row, rho_row) ):
+            label = mode if mode != 'constant' else rho
+
+            config = {  'rho'           : label,
+                        'alpha'         : rho,
+                        'beta'          : noise,
+                        'function'      : 'fvm',
+                        'V'             : noise,
+                        'A'             : 0.17340510276921817,
+                        # 'width'         : 0.2140327993142855,
+                        'width'         : 0.5140327993142855,
+                        'flatness'      : 0.6585904840291591,
+                        'b'             : 1.2731732385019432,
+                        'center'        : 2.9616211149125977 - 0.21264734641020677,
+                        'center_shift'  : theta,
+                        'N'             : 1000,
+                        'int_step'      : 100
+                        }
+            
+            system     = NeuralSystem(config)                
+            system_ind = NeuralSystem(config)
+            system_ind.alpha = 0.0
+            if mode == 'constant': system_ind.rho = 0.0
+            system_ind.generate_variance_matrix()
+            
+            mus = np.array([ [system.mu[0](t),system.mu[1](t)] for t in theta_support ])
+            
+            Sigma_s = np.cov(mus,rowvar=False)
+            Sigma_n = np.average(np.array(list( map(system.sigma, theta_support) )),axis=0)
+            V_n     = np.average(np.array(list( map(system_ind.sigma, theta_support) )),axis=0)
+
+            MI_correlated  = 0.5*np.log( np.linalg.det(Sigma_s + Sigma_n) / np.linalg.det(Sigma_n) ) 
+            MI_independent = 0.5*np.log( np.linalg.det(Sigma_s + V_n)     / np.linalg.det(V_n)     )
+            
+            synergy_grid[i_row][i_col] = ((MI_correlated/MI_independent) - 1)*100
+
+    for i,dt in enumerate(delta_theta_ax):
+            config['center_shift'] = dt
+            system = NeuralSystem(config)
+            mus = np.array([ [system.mu[0](t),system.mu[1](t)] for t in theta_support ])
+            rhos_ax[i] = np.corrcoef(mus, rowvar=False)[1,0]
+            
+    rhos_grid, rhon_grid = np.meshgrid(rhos_ax, rho_ax)
+    
+    return rhos_grid, rhon_grid, synergy_grid

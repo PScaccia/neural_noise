@@ -12,7 +12,6 @@ from   decoder import sample_theta_ext
 
 def parser():
     import argparse
-    
     parser = argparse.ArgumentParser()
     parser.add_argument('--n_proc',type=int,required=False, default=20,help="Number of workers")
     parser.add_argument('--multi_thread',action='store_true', default=True,help="Multi-threading")
@@ -97,7 +96,9 @@ def simulation( config, args, skip_independent = False ):
         return [ theta_sampling, theta_sampling_control ]
 
 def save_results(results, file ):
+    
     if os.path.isfile(file):
+        # If file already exists, update it with new results
         saved_data = dict(np.load(file))
         for key, result in results.items():
             if key not in saved_data:
@@ -105,6 +106,7 @@ def save_results(results, file ):
         np.savez_compressed(file, **saved_data)
         print("Updated file ",file)
     else:
+        # If file doesn't exist, create it
         np.savez_compressed(file, **results)
         print("Created file ",file)
     return
@@ -119,5 +121,3 @@ if __name__ == '__main__':
 
     # Run Main Cicle
     main( config, args )
-    
-    

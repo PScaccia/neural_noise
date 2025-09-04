@@ -107,7 +107,8 @@ def sample_theta_ext(system, theta_array, decoder = 'bayesian', N_step = 500,
 
     theta_ext_sampling = np.empty( ( len(theta_array), system.N_trial ) )*np.nan
 
-    if multi_thread is False:            
+    if multi_thread is False:   
+        # Single Thread         
         for i,theta in zip(tqdm(range(len(theta_array)), desc = 'Computing decoding error: ' ), theta_array):
             r_sampling = system.neurons(theta)
             if decoder == 'bayesian':

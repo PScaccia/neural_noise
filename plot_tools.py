@@ -762,8 +762,7 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
     from   matplotlib.patches import Ellipse
     import matplotlib.cm as cm
     import matplotlib.colors as mcolors
-    from   utils.stat_tools import simulate_2AFC
-    from   utils.stat_tools import d_prime_squared
+    from   utils.stat_tools import simulate_2AFC, d_prime_squared, compute_bar_experiment_MI
     from   matplotlib.collections import LineCollection
     
     def compute_delta(x, a, b, Sigma_inv):
@@ -1010,7 +1009,8 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
 
     else:
         pass
-        
+    
+    # <------------------------------- THIRD PANEL   
     if not skip_panelC:
         fig, ax = plt.subplots(1,1, figsize=(8, 6))
 
@@ -1066,7 +1066,8 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
         print("Saved plot ",OUTFIG)
     else:
         pass
-        
+
+    # <------------------------------- FOURTH PANEL   
     if not skip_panelD:
 
         config = {  'rho'           : 'poisson',
@@ -1167,73 +1168,15 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
         print("Saved plot ", OUTFIG)
     else:
         pass
-
+   # <------------------------------- FIFTH PANEL   
     if not skip_panelE:
+        beta = 0.2
+        rhos, rhon, syn = compute_bar_experiment_MI(noise = beta,
+                                                    N_points_deltat = 100, 
+                                                    N_points_rhon   = 200)
+        
         fig, ax = plt.subplots(1,1, figsize=(8, 6))
-        
-        theta_support = np.linspace(0, 2*np.pi, 360)
-        
-        delta_theta_ax = np.linspace(0.0,np.pi,200)
-        rho_ax         = np.linspace(-1,1,200)
-        rhos_ax        = np.zeros_like(delta_theta_ax)
-        
-        delta_theta_grid, rho_grid = np.meshgrid(delta_theta_ax, rho_ax)
-        synergy_grid = np.zeros_like(delta_theta_grid)
-
-        for i_row, (theta_row,rho_row) in enumerate(zip(delta_theta_grid, rho_grid)):
-            for i_col, (theta,rho) in enumerate( zip(theta_row, rho_row) ):
-                
-                config = {  'rho'           : 'poisson',
-                            'alpha'         : rho,
-                            'beta'          : 20,
-                            'function'      : 'fvm',
-                            'A'             : 0.17340510276921817,
-                            'width'         : 0.2140327993142855,
-                            'flatness'      : 0.6585904840291591,
-                            'b'             : 1.2731732385019432,
-                            'center'        : 2.9616211149125977 - 0.21264734641020677,
-                            'center_shift'  : theta,
-                            'N'             : 1000,
-                            'int_step'      : 100
-                            }
-                
-                system = NeuralSystem(config)                
-                system_ind = NeuralSystem(config)
-                system_ind.alpha = 0.0
-                system_ind.generate_variance_matrix()
-                mus = np.array([ [system.mu[0](t),system.mu[1](t)] for t in theta_support ])
-                
-                Sigma_s = np.cov(mus,rowvar=False)
-                Sigma_n = np.average(np.array(list( map(system.sigma, theta_support) )),axis=0)
-                V_n = np.average(np.array(list( map(system_ind.sigma, theta_support) )),axis=0)
-
-                MI_correlated  = 0.5*np.log( np.linalg.det(Sigma_s + Sigma_n) / np.linalg.det(Sigma_n))
-                
-                MI_independent = 0.5*np.log( np.linalg.det(Sigma_s + V_n) / np.linalg.det(V_n))
-                
-                synergy_grid[i_row][i_col] = ((MI_correlated/MI_independent) - 1)*100
-        syn = synergy_grid
-        for i,dt in enumerate(delta_theta_ax):
-                config = {  'rho'           : 'poisson',
-                            'alpha'         : 0.0,
-                            'beta'          : 20,
-                            'function'      : 'fvm',
-                            'A'             : 0.17340510276921817,
-                            'width'         : 0.2140327993142855,
-                            'flatness'      : 0.6585904840291591,
-                            'b'             : 1.2731732385019432,
-                            'center'        : 2.9616211149125977 - 0.21264734641020677,
-                            'center_shift'  : dt,
-                            'N'             : 1000,
-                            'int_step'      : 100
-                            }
-                system = NeuralSystem(config)
-                mus = np.array([ [system.mu[0](t),system.mu[1](t)] for t in theta_support ])
-                rhos_ax[i] = np.corrcoef(mus, rowvar=False)[1,0]
-                
-        rhos_grid, rhon_grid = np.meshgrid(rhos_ax, rho_ax)
-        
-        cmesh = ax.pcolor(rhos_grid, rhon_grid, syn, cmap = 'coolwarm',vmin = -3,vmax=3)
+        cmesh = ax.pcolor(rhos, rhon, syn, cmap = 'coolwarm',vmin = -2,vmax=2)
         cb = plt.colorbar(cmesh)
         cb.set_label("Synergy [%]", size = 18)
         ax.set_xlabel("Signal Correlation",  size = 18)
@@ -1245,14 +1188,43 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
         plt.xticks(np.linspace(-1,1,7),size=15)
+        plt.xlim(-1,1)
         # ax.set_xticklabels([ str(int(x))+'°' for x in np.linspace(-45,45,7)])
         plt.yticks(size=15)
         plt.tight_layout()
         
+        # Plot threshold line (rho*)
+        config = {  'rho'           : 'poisson',
+                    'alpha'         : 0.0,
+                    'beta'          : beta,
+                    'function'      : 'fvm',
+                    'V'             : beta,
+                    'A'             : 0.17340510276921817,
+                    # 'width'         : 0.2140327993142855,
+                    'width'         : 0.5140327993142855,
+                    'flatness'      : 0.6585904840291591,
+                    'b'             : 1.2731732385019432,
+                    'center'        : 2.9616211149125977 - 0.21264734641020677,
+                    'center_shift'  : 0.1,
+                    'N'             : 1000,
+                    'int_step'      : 100
+                    } 
+           
+        system     = NeuralSystem(config)
+        theta_support = np.linspace(0,2*np.pi,360)
+        Sigma_n = np.average(np.array(list( map(system.sigma, theta_support) )),axis=0)
+        mus = np.array([[system.mu[0](t),system.mu[1](t)] for t in theta_support])
+        v1_n,v2_n = Sigma_n[0,0], Sigma_n[1,1]
+        v1_s,v2_s = np.var(mus,axis=0)
+        A = np.sqrt( (v1_s*v2_s)/(v1_n*v2_n))
+        B = np.sqrt((v1_n + v1_s)*(v2_n + v2_s)/(v1_s*v2_s))
+        rho_star = lambda x: -2*A*x/(1+(x**2 - B**2)*(A**2))
+        plt.plot(rhos[0,:], rho_star(rhos[0,:]), ls = '--', c = 'black', lw = 1)
+        
         # Save second panel
-        OUTFIG = f"{OUTDIR}/figure1_panelE.pdf"
-        plt.savefig(OUTFIG, dpi = 1000, bbox_inches = 'tight')
-        print("Saved plot ",OUTFIG)
+        # OUTFIG = f"{OUTDIR}/figure1_panelE.pdf"
+        # plt.savefig(OUTFIG, dpi = 1000, bbox_inches = 'tight')
+        # print("Saved plot ",OUTFIG)
         OUTFIG = f"{OUTDIR}/figure1_panelE.png"
         plt.savefig(OUTFIG, dpi = 1000, bbox_inches = 'tight')
         print("Saved plot ",OUTFIG)
@@ -1667,7 +1639,7 @@ def paper_plot_figure_4( OUTDIR  = "/home/paolos/Pictures/decoding/paper",
 
 
     # Panel B
-    ax = axes[1]
+    ax   = axes[1]
     cmap = cm.coolwarm
     norm = mcolors.Normalize(vmin=-3, vmax = 3)
     
