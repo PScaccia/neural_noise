@@ -11,6 +11,8 @@ import progressbar
 from scipy.misc import derivative
 from math import sqrt
 from datetime import datetime
+import warnings
+warnings.filterwarnings("ignore")
 
 THETA = np.linspace(0, 2*np.pi, 180)
 #THETA = np.linspace(0, 2*np.pi, 360)

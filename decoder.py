@@ -13,6 +13,8 @@ from   network import NeuralSystem, THETA
 from   tqdm import tqdm
 import scipy
 from   utils.stat_tools import compute_MSE
+import warnings
+warnings.filterwarnings("ignore")
 
 HOMEDIR = subprocess.check_output("echo $HOME", shell=True, text=True).replace('\n','')
 
@@ -44,31 +46,35 @@ def circular_moving_average(x,y,w):
 def simmetrize_curve( curve, center, copy_right = True):    
     return  np.append( curve[91:-1][::-1], curve[88:])
     
-def bayesian_decoder(system, r, theta, N_step = 600):
+def bayesian_decoder(r,mu, inv_sigma, det, theta_support):
     
     # Define Integral Parameters
-    theta_support = np.linspace(THETA[0], THETA[-1],N_step)
-    dtheta = (THETA[-1] - THETA[0])/N_step    
+    # dtheta = (THETA[-1] - THETA[0])/N_step    
 
-    if not callable(system.rho):    
-        sqrt_det = np.sqrt( np.linalg.det(system.sigma(theta)))
-        norm_factor = dtheta / (2*np.pi*sqrt_det)
-    else:
-        norm_factor = dtheta / (2*np.pi)
+    # if not callable(system.rho):    
+    #     sqrt_det = np.sqrt( np.linalg.det(system.sigma(theta)))
+    #     norm_factor = dtheta / (2*np.pi*sqrt_det)
+    # else:
+    #     norm_factor = dtheta / (2*np.pi)
         
-    mu_vect          = lambda x :  np.array([system.mu[0](x),system.mu[1](x)]) 
+    # mu_vect          = lambda x :  np.array([system.mu[0](x),system.mu[1](x)]) 
     
-    if not callable(system.rho):
-        cost_function    = lambda x : (  r - mu_vect(x) ).transpose().dot( system.inv_sigma(x) ).dot( r - mu_vect(x) )
-    else:
-        cost_function    = lambda x : (  r - mu_vect(x) ).transpose().dot( system.inv_sigma(x) ).dot( r - mu_vect(x) ) + abs(np.log(np.linalg.det(system.sigma(x))))   
+    # if not callable(system.rho):
+    #     cost_function    = lambda x : (  r - mu_vect(x) ).transpose().dot( system.inv_sigma(x) ).dot( r - mu_vect(x) )
+    # else:
+    #     cost_function    = lambda x : (  r - mu_vect(x) ).transpose().dot( system.inv_sigma(x) ).dot( r - mu_vect(x) ) + abs(np.log(np.linalg.det(system.sigma(x))))   
 
-    P_post           = lambda x : np.exp(-0.5*cost_function(x))
+    # P_post           = lambda x : np.exp(-0.5*cost_function(x))
     
+    delta_r = r.reshape(r.shape[0],-1) - mu
+
+    cost_function    = np.array([ dr.T@inv_matrix@dr + np.log(d) for dr, inv_matrix, d in zip(delta_r.transpose(),inv_sigma,det) ])
+    P_post           = np.exp(-0.5*cost_function)
+
     # Define Integrand Functions
-    P_post_sin = lambda x : P_post(x)*np.sin(x)
-    P_post_cos = lambda x : P_post(x)*np.cos(x)
-    
+    P_post_sin = P_post*np.sin(theta_support)
+    P_post_cos = P_post*np.cos(theta_support)
+
     # Integrate Naiv Algorithm
     # sin = np.sum( list(map(P_post_sin, theta_support)))
     # cos = np.sum( list(map(P_post_cos, theta_support)))    
@@ -76,15 +82,15 @@ def bayesian_decoder(system, r, theta, N_step = 600):
     # cos *= norm_factor
 
     # Integrate via Simpson's rule
-    sin = scipy.integrate.simpson(list(map(P_post_sin, theta_support)), dx = 1)
-    cos = scipy.integrate.simpson(list(map(P_post_cos, theta_support)), dx = 1)
+    sin = scipy.integrate.simpson(P_post_sin, x = theta_support)
+    cos = scipy.integrate.simpson(P_post_cos, x = theta_support)
     
     # Integrate via Quadrate Method
     # sin,_ = scipy.integrate.quad(P_post_sin, 0, 2*np.pi)
     # cos,_ = scipy.integrate.quad(P_post_cos, 0, 2*np.pi)
     
     extimate = np.arctan2(sin, cos)
-    
+
     return extimate if extimate >= 0 else extimate + 2*np.pi
 
 def MAP_decoder(system, r):
@@ -112,7 +118,11 @@ def sample_theta_ext(system, theta_array, decoder = 'bayesian', N_step = 500,
         for i,theta in zip(tqdm(range(len(theta_array)), desc = 'Computing decoding error: ' ), theta_array):
             r_sampling = system.neurons(theta)
             if decoder == 'bayesian':
-                decoder_f = lambda r: bayesian_decoder(system, r, theta, N_step = N_step)
+                theta_support = np.linspace(THETA[0], THETA[-1], N_step)
+                mu = np.array([ list(map(system.mu[0],theta_support)),list(map(system.mu[1],theta_support))])
+                inv_sigma = np.array(list(map(system.inv_sigma,theta_support)))
+                det = np.array(list(map(lambda x: np.linalg.det(system.sigma(x)),theta_support)))
+                decoder_f = lambda r: bayesian_decoder(r, mu, inv_sigma, det, theta_support)
             elif decoder == 'MAP':
                 decoder_f = lambda r: MAP_decoder(system, r)
             else:
@@ -132,7 +142,11 @@ def sample_theta_ext(system, theta_array, decoder = 'bayesian', N_step = 500,
                 r_sampling = system.neurons(theta)[:n,:]
 
                 if decoder == 'bayesian':
-                    decoder_f = lambda r: bayesian_decoder(system, r, theta, N_step = N_step)
+                    theta_support = np.linspace(THETA[0], THETA[-1], N_step)
+                    mu = np.array([ list(map(system.mu[0],theta_support)),list(map(system.mu[1],theta_support))])
+                    inv_sigma = np.array(list(map(system.inv_sigma,theta_support)))
+                    det = np.array(list(map(lambda x: np.linalg.det(system.sigma(x)),theta_support)))
+                    decoder_f = lambda r: bayesian_decoder(r, mu, inv_sigma, det, theta_support)
                 elif decoder == 'MAP':
                     decoder_f = lambda r: MAP_decoder(system, r)
                 else:
