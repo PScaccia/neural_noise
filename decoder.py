@@ -112,16 +112,16 @@ def sample_theta_ext(system, theta_array, decoder = 'bayesian', N_step = 500,
                      multi_thread = False, num_threads = 5):
 
     theta_ext_sampling = np.empty( ( len(theta_array), system.N_trial ) )*np.nan
+    theta_support = np.linspace(THETA[0], THETA[-1], N_step)
+    mu = np.array([ list(map(system.mu[0],theta_support)),list(map(system.mu[1],theta_support))])
+    inv_sigma = np.array(list(map(system.inv_sigma,theta_support)))
+    det = np.array(list(map(lambda x: np.linalg.det(system.sigma(x)),theta_support)))
 
     if multi_thread is False:   
         # Single Thread         
         for i,theta in zip(tqdm(range(len(theta_array)), desc = 'Computing decoding error: ' ), theta_array):
             r_sampling = system.neurons(theta)
             if decoder == 'bayesian':
-                theta_support = np.linspace(THETA[0], THETA[-1], N_step)
-                mu = np.array([ list(map(system.mu[0],theta_support)),list(map(system.mu[1],theta_support))])
-                inv_sigma = np.array(list(map(system.inv_sigma,theta_support)))
-                det = np.array(list(map(lambda x: np.linalg.det(system.sigma(x)),theta_support)))
                 decoder_f = lambda r: bayesian_decoder(r, mu, inv_sigma, det, theta_support)
             elif decoder == 'MAP':
                 decoder_f = lambda r: MAP_decoder(system, r)
@@ -142,10 +142,6 @@ def sample_theta_ext(system, theta_array, decoder = 'bayesian', N_step = 500,
                 r_sampling = system.neurons(theta)[:n,:]
 
                 if decoder == 'bayesian':
-                    theta_support = np.linspace(THETA[0], THETA[-1], N_step)
-                    mu = np.array([ list(map(system.mu[0],theta_support)),list(map(system.mu[1],theta_support))])
-                    inv_sigma = np.array(list(map(system.inv_sigma,theta_support)))
-                    det = np.array(list(map(lambda x: np.linalg.det(system.sigma(x)),theta_support)))
                     decoder_f = lambda r: bayesian_decoder(r, mu, inv_sigma, det, theta_support)
                 elif decoder == 'MAP':
                     decoder_f = lambda r: MAP_decoder(system, r)

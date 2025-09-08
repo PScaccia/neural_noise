@@ -183,7 +183,7 @@ def simulate_2AFC(V1 = 0.1, V2 = 0.1, n_theta_points = 360, n_rho_points = 500):
 def compute_bar_experiment_MI( noise = 10, N_points_deltat = 200, N_points_rhon = 200, mode = 'poisson'):
     from network import NeuralSystem
     
-    theta_support  = np.linspace(0, 2*np.pi, 600)
+    theta_support  = np.linspace(0, 2*np.pi, 180)
     delta_theta_ax = np.linspace(-np.pi,np.pi,N_points_deltat)
     rho_ax         = np.linspace(-1,1,N_points_rhon)
     rhos_ax        = np.zeros_like(delta_theta_ax)
@@ -201,8 +201,8 @@ def compute_bar_experiment_MI( noise = 10, N_points_deltat = 200, N_points_rhon 
                         'function'      : 'fvm',
                         'V'             : noise,
                         'A'             : 0.17340510276921817,
-                        # 'width'         : 0.2140327993142855,
-                        'width'         : 0.5140327993142855,
+                        'width'         : 0.2140327993142855,
+                        # 'width'         : 0.5140327993142855,
                         'flatness'      : 0.6585904840291591,
                         'b'             : 1.2731732385019432,
                         'center'        : 2.9616211149125977 - 0.21264734641020677,

@@ -10,11 +10,11 @@ import pickle
 
 
 config = {  
-            'label'         : 'adaptive_selected',
-            'rho'           : "adaptive" ,
-            'alpha'         : np.arange(0.14,1.0,0.04),
+            'label'         : 'poisson_selected',
+            'rho'           : "poisson" ,
+            'alpha'         : np.arange(0.04,1.0,0.04),
             # 'alpha'         : np.arange(0.1,0.86,0.02),
-            'beta'          : np.array([  0.15 ]),
+            'beta'          : np.array([ 0.5, 1, 1.5   ]),
             'function'      : 'fvm',
             'A'             : 0.17340510276921817,
             'width'         : 0.2140327993142855,
@@ -22,9 +22,11 @@ config = {
             'b'             : 1.2731732385019432,
             'center'        : 2.9616211149125977 - 0.21264734641020677,
             'center_shift'  : np.pi/4,
-            'N'             : 15000,
+            'N'             : 30000,
             'int_step'      : 100
             }
+# delta_theta [0.        , 0.34128722, 0.6913254 , 1.04136358, 1.39140176,  1.74143994, 2.09147812, 2.4415163 , 2.79155447, 3.14159265]
+
 pkl_name = __file__.replace('.py','.pkl')
 with open(pkl_name,"wb") as ofile:
     pickle.dump(config, ofile, protocol=pickle.HIGHEST_PROTOCOL)

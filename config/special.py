@@ -9,12 +9,12 @@ import numpy as np
 import pickle
 
 
-config = {  'label'         : 'poisson_det',
-            'rho'           : "poisson_det",
-            #'alpha'         : np.array([-0.75,-0.5,-0.25,-0.1, 0.05,0.15, 0.25, 0.4, 0.5,0.6, 0.7 , 0.8, 0.95]),
-            # 'alpha'         : np.linspace(0,1,21)[1:4],
-            'alpha'         : np.array([ 0.2, 0.95 ]),
-            'beta'          : np.array([ 2.0 ]),
+config = {  
+            'label'         : 'poisson_selected',
+            'rho'           : "poisson" ,
+            'alpha'         : np.arange(0.32,1.0,0.04),
+            # 'alpha'         : np.arange(0.1,0.86,0.02),
+            'beta'          : np.array([ 0.05  ]),
             'function'      : 'fvm',
             'A'             : 0.17340510276921817,
             'width'         : 0.2140327993142855,
@@ -22,9 +22,11 @@ config = {  'label'         : 'poisson_det',
             'b'             : 1.2731732385019432,
             'center'        : 2.9616211149125977 - 0.21264734641020677,
             'center_shift'  : np.pi/4,
-            'N'             : 200000,
+            'N'             : 30000,
             'int_step'      : 100
             }
+# delta_theta [0.        , 0.34128722, 0.6913254 , 1.04136358, 1.39140176,  1.74143994, 2.09147812, 2.4415163 , 2.79155447, 3.14159265]
+
 
 with open("config/special.pkl","wb") as ofile:
     pickle.dump(config, ofile, protocol=pickle.HIGHEST_PROTOCOL)

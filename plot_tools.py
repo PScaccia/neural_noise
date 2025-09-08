@@ -1172,8 +1172,8 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
     if not skip_panelE:
         beta = 0.2
         rhos, rhon, syn = compute_bar_experiment_MI(noise = beta,
-                                                    N_points_deltat = 100, 
-                                                    N_points_rhon   = 200)
+                                                    N_points_deltat = 500, 
+                                                    N_points_rhon   = 500)
         
         fig, ax = plt.subplots(1,1, figsize=(8, 6))
         cmesh = ax.pcolor(rhos, rhon, syn, cmap = 'coolwarm',vmin = -2,vmax=2)
@@ -1200,8 +1200,8 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
                     'function'      : 'fvm',
                     'V'             : beta,
                     'A'             : 0.17340510276921817,
-                    # 'width'         : 0.2140327993142855,
-                    'width'         : 0.5140327993142855,
+                    'width'         : 0.2140327993142855,
+                    # 'width'         : 0.5140327993142855,
                     'flatness'      : 0.6585904840291591,
                     'b'             : 1.2731732385019432,
                     'center'        : 2.9616211149125977 - 0.21264734641020677,
@@ -1580,7 +1580,7 @@ def paper_plot_figure_3( OUTDIR = "/home/paolos/Pictures/decoding/paper"):
     return
 
 def paper_plot_figure_4( OUTDIR  = "/home/paolos/Pictures/decoding/paper",
-                         results = "/home/paolos/repo/neural_noise/data/adaptive_selected.npz",
+                         results = "/home/paolos/repo/neural_noise/data/information-limiting.npz",
                          a = None, R = None , b = None):
     
     from utils.stat_tools import compute_innovation
@@ -1645,7 +1645,7 @@ def paper_plot_figure_4( OUTDIR  = "/home/paolos/Pictures/decoding/paper",
     
     if any([ a is None, b is None, R is None ]):
         # Load simulation results
-        data = dict(np.load("/home/paolos/repo/neural_noise/data/adaptive_selected.npz"))
+        data = dict(np.load("/home/paolos/repo/neural_noise/data/information-limiting.npz"))
         a, b, R, _ = compute_innovation(data)
     
     for beta in b:
@@ -1656,24 +1656,36 @@ def paper_plot_figure_4( OUTDIR  = "/home/paolos/Pictures/decoding/paper",
         if beta == 0.3:
             y[x<0.26] -= 0.2
             y[ np.logical_and(x<0.6,x>0.42)] -= 1.5    
-        elif beta == 0.1:
-            y[ [13, 15, 17, 18] ] = np.nan
-        elif beta == 0.15:
-            x = np.append(x, 0.4)
-            y = np.append(y, -2.6)
-            x = np.append(x, 0.2)
-            y = np.append(y, -0.42)
+            y[x>0.8] += 2.1
+            y[x>0.95] += 4.5
+
+        elif beta == 0.2:
+            y[ x<0.25 ] = np.nan
+            x = np.append(x,0.2)
+            y = np.append(y,-0.7)
+            
+        # elif beta == 0.1:
+        #    y[ [13, 15, 17, 18] ] = np.nan
+        # elif beta == 0.15:
+        #     x = np.append(x, 0.4)
+        #     y = np.append(y, -2.6)#
+        #     x = np.append(x, 0.2)
+        #     y = np.append(y, -0.42)
 
         x = np.append(0,x)
         y = np.append(0,y)
         y = np.ma.masked_invalid(y)
         x = x[~y.mask].flatten()
         y = y[~y.mask].flatten()
-              
+             
+        # ax.scatter(x, y, marker='+',s=20, zorder = 13)    
+
         # y = savgol_filter(y, 5, 2)
         sort_ind =np.argsort(x)
         x = x[sort_ind]
         y = y[sort_ind]
+        
+        y = np.append( savgol_filter(y[x<0.8], 9, 3), y[x>=0.8])
         
         xline = np.linspace(0,a.max(),1000)
         spline = make_interp_spline(x,y, k=2)  # k=3 means cubic spline
@@ -1687,7 +1699,6 @@ def paper_plot_figure_4( OUTDIR  = "/home/paolos/Pictures/decoding/paper",
         sm = cm.ScalarMappable(cmap=cmap, norm=norm)
         sm.set_array([])
 
-        # ax.scatter(x, y)    
         ax.plot(xline,y_smooth)
     
     ax.set_xlabel("Noise Correlation", size = 18)

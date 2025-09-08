@@ -39,31 +39,34 @@ def main( config, args):
     print(args.multi_thread)
     print()
     
-    alpha_grid, beta_grid = np.meshgrid( config['alpha'], config['beta'] )    
+    alpha_grid, delta_theta = np.meshgrid( config['alpha'], config['center_shift'] )    
     case = copy.deepcopy(config)
     results = {}
     outfile = "./data/" + config['label'] + '.npz'
     
     # Function to check if the independent case has already been simulated
-    check_simulated_noise = lambda x : len([ k for k in results.keys() if '_b_{:.2f}'.format(x) in k]) != 0
-
+    check_simulated = lambda x : len([ k for k in results.keys() if '_dtheta_{:.2f}'.format(x) in k]) != 0
+    
+    b = config['beta']
+    
     # Iterate on parameter grid
-    for a, b in zip(  alpha_grid.flatten(), 
-                      beta_grid.flatten()   ):
+    for a, dtheta in zip(  alpha_grid.flatten(), 
+                           delta_theta.flatten()   ):
 
-        print("Running simulation with alpha: {} beta: {}".format(a,b))       
-        case['alpha'] = a
-        case['beta']  = b
-
-        # Run single simulation with alpha = a and beta = b
-        if check_simulated_noise(b):
+        print("Running simulation with alpha: {} dtheta: {}".format(a,dtheta))       
+        case['alpha']         = a
+        case['center_shift']  = dtheta
+        case['beta']          = b
+        
+        # Run single simulation with alpha = a and center_shift = dtheta
+        if check_simulated(dtheta):
             # If it has already ran the independent case for that noise take that
-            old_case = [ x for x in results.keys() if '_b_{:.2f}'.format(b) in x][-1]
-            results['a_{:.2f}_b_{:.2f}'.format(a,b)] = [ simulation(case, args,skip_independent = True)[0], 
-                                                         results[old_case][1]   ]
+            old_case = [ x for x in results.keys() if '_dtheta_{:.2f}'.format(dtheta) in x][-1]
+            results['a_{:.2f}_dtheta_{:.2f}'.format(a,dtheta)] = [ simulation(case, args,skip_independent = True)[0], 
+                                                                   results[old_case][1]   ]
         else:
             # Otherwise, simulate both cases
-            results['a_{:.2f}_b_{:.2f}'.format(a,b)] = simulation(case, args)
+            results['a_{:.2f}_dtheta_{:.2f}'.format(a,dtheta)] = simulation(case, args)
         
         # Save results
         save_results(results, outfile )
@@ -92,7 +95,7 @@ def simulation( config, args, skip_independent = False ):
         theta_sampling_control = sample_theta_ext(system, THETA, 
                                                   decoder = 'bayesian', N_step = config['int_step'], 
                                                   multi_thread = args.multi_thread, 
-                                                  num_threads = args.n_proc )
+                                                  num_threads  = args.n_proc )
     
         return [ theta_sampling, theta_sampling_control ]
 
