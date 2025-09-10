@@ -61,6 +61,7 @@ def main( config, args):
             old_case = [ x for x in results.keys() if '_b_{:.2f}'.format(b) in x][-1]
             results['a_{:.2f}_b_{:.2f}'.format(a,b)] = [ simulation(case, args,skip_independent = True)[0], 
                                                          results[old_case][1]   ]
+
         else:
             # Otherwise, simulate both cases
             results['a_{:.2f}_b_{:.2f}'.format(a,b)] = simulation(case, args)
@@ -102,14 +103,45 @@ def save_results(results, file ):
         # If file already exists, update it with new results
         saved_data = dict(np.load(file))
         for key, result in results.items():
-            if key not in saved_data:
+            if key not in saved_data.keys():
+                # Add new case...
                 saved_data[key] = result
+
         np.savez_compressed(file, **saved_data)
         print("Updated file ",file)
     else:
         # If file doesn't exist, create it
         np.savez_compressed(file, **results)
         print("Created file ",file)
+    return
+
+def remove_case_from_results(file, a = None, b = None):
+    
+    if a is None and b is None: sys.exit("Specify alpha or beta for the case to be removed")
+
+    os.system(f"mv {file} {file}.bkp")    
+    print(f"Created bkp file {file}.bkp.")
+
+    a_keys = []
+    b_keys = []
+    
+    data = dict(np.load(file+'.bkp'))
+    if a is not None and b is not None:
+        sys.exit("Not implemented yet!")
+
+    elif a is not None:
+        keys = [k for k in data.keys() if "a_{:.2f}_".format(a) in k ]
+
+    elif b is not None:
+        keys = [k for k in data.keys() if "b_{:.2f}".format(b) in k] 
+
+    for k in keys:
+        del(data[k])
+        print(f"Deleted case {k}!")
+        
+    save_results(data, file)
+    del(data)        
+    
     return
 
 if __name__ == '__main__':

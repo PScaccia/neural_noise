@@ -15,7 +15,7 @@ import warnings
 warnings.filterwarnings("ignore")
 
 THETA = np.linspace(0, 2*np.pi, 180)
-#THETA = np.linspace(0, 2*np.pi, 360)
+# THETA = np.linspace(0, 2*np.pi, 360)
 
 
 def generate_tuning_curve_from_fit(fit):    

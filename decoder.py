@@ -67,7 +67,6 @@ def bayesian_decoder(r,mu, inv_sigma, det, theta_support):
     # P_post           = lambda x : np.exp(-0.5*cost_function(x))
     
     delta_r = r.reshape(r.shape[0],-1) - mu
-
     cost_function    = np.array([ dr.T@inv_matrix@dr + np.log(d) for dr, inv_matrix, d in zip(delta_r.transpose(),inv_sigma,det) ])
     P_post           = np.exp(-0.5*cost_function)
 

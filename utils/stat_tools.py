@@ -104,7 +104,9 @@ def compute_MSE(theta_sampling, theta, mode = 'cos', errors = False):
 
 def compute_innovation(results, errors = False):
     from network import THETA
-    
+    from decoder import circular_moving_average
+    from scipy.signal import savgol_filter
+
     alphas = []
     betas  = []
     R      = []
@@ -125,7 +127,7 @@ def compute_innovation(results, errors = False):
                 MSE, MSE_error               = compute_MSE( np.array( sampling[0,:,:]),  THETA, mode = 'mse', errors = errors)
                 MSE_control, MSE_control_err = compute_MSE( np.array( sampling[1,:,:]),  THETA, mode = 'mse', errors = errors)
                     
-                # Smooth with Savitzky-Golay filter 
+                # # Smooth with Savitzky-Golay filter 
                 # MSE = circular_moving_average(THETA, MSE,15)
                 # MSE_control = circular_moving_average(THETA, MSE_control,15)
 
@@ -152,7 +154,8 @@ def compute_2AFC_mutual_information(vector, Sigma):
     pe = 0.5*(1-erf(d))    
     return 1 + pe*np.log(pe) + (1-pe)*np.log((1-pe))
 
-def simulate_2AFC(V1 = 0.1, V2 = 0.1, n_theta_points = 360, n_rho_points = 500):
+def simulate_2AFC(V1 = 0.1, V2 = 0.1, n_theta_points = 360, n_rho_points = 500, fix_det = False):
+    
     Sigma = np.array([[V1,0], [0, V2]])
 
     a = np.array([-np.sqrt(2), 0.])
@@ -160,9 +163,10 @@ def simulate_2AFC(V1 = 0.1, V2 = 0.1, n_theta_points = 360, n_rho_points = 500):
 
     angles = np.linspace(-np.pi/4,np.pi/4,n_theta_points)
     rhos   = np.linspace(-0.99999,0.99999,n_rho_points)
+    
+    
     cov_matrix = lambda x : np.array([[V1, x*np.sqrt(V1*V2)],
                                    [x*np.sqrt(V1*V2), V2]])
-
     angle_grid, rho_grid = np.meshgrid(angles,rhos)
     synergy_grid = np.zeros_like(angle_grid)
 
@@ -173,8 +177,10 @@ def simulate_2AFC(V1 = 0.1, V2 = 0.1, n_theta_points = 360, n_rho_points = 500):
             _local_a = Rotation@a
             _local_b = Rotation@b
             diff = _local_b - _local_a
-            
-            MI_correlated  = compute_2AFC_mutual_information(diff, cov_matrix(rho))
+
+            scale_factor = 1 if not fix_det else np.sqrt((1-rho**2))
+
+            MI_correlated  = compute_2AFC_mutual_information(diff, cov_matrix(rho)/scale_factor)
             MI_independent = compute_2AFC_mutual_information(diff, Sigma)
             synergy_grid[i_row][i_col] = ((MI_correlated/MI_independent) - 1)*100
         
@@ -183,7 +189,7 @@ def simulate_2AFC(V1 = 0.1, V2 = 0.1, n_theta_points = 360, n_rho_points = 500):
 def compute_bar_experiment_MI( noise = 10, N_points_deltat = 200, N_points_rhon = 200, mode = 'poisson'):
     from network import NeuralSystem
     
-    theta_support  = np.linspace(0, 2*np.pi, 180)
+    theta_support  = np.linspace(0, 2*np.pi, 1000)
     delta_theta_ax = np.linspace(-np.pi,np.pi,N_points_deltat)
     rho_ax         = np.linspace(-1,1,N_points_rhon)
     rhos_ax        = np.zeros_like(delta_theta_ax)
@@ -207,7 +213,7 @@ def compute_bar_experiment_MI( noise = 10, N_points_deltat = 200, N_points_rhon 
                         'b'             : 1.2731732385019432,
                         'center'        : 2.9616211149125977 - 0.21264734641020677,
                         'center_shift'  : theta,
-                        'N'             : 1000,
+                        'N'             : 100000,
                         'int_step'      : 100
                         }
             

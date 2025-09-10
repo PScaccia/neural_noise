@@ -755,7 +755,7 @@ def plot_error_distr( error, other_errors = [] , label = '', other_labels = [],
 
 def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
                         skip_panelA = False, skip_panelB = False, skip_panelC = False,
-                        skip_panelD = False, skip_panelE = False):
+                        skip_panelD = False, skip_panelE = False, fix_det = False):
     from   scipy.stats import multivariate_normal
     from   scipy.special import expit  # Sigmoid function
     from   scipy.special import erf
@@ -859,14 +859,13 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
     V2 = 0.2
     rho = 0
     Sigma = np.array([[V1,0], [0, V2]])
-    Sigma_rho = np.array([[V1,0.6*np.sqrt(V1*V2)], [0.6*np.sqrt(V1*V2), V2]])
 
     #<----------------------------- FIRST PANEL
     if not skip_panelA:
         # Create figure with 3 panels
         fig, axes = plt.subplots(2, 2, figsize=(6, 6))
         label_size = 18
-        dx = 3
+        dx = 3 if not fix_det else 4
 
         a = np.array([1, 6]).astype(float)
         b = np.array([3, 4]).astype(float)
@@ -882,6 +881,8 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
         a = Rotation@a
         b = Rotation@b
         Sigma_rho = np.array([[V1,rho*np.sqrt(V1*V2)], [rho*np.sqrt(V1*V2), V2]])
+        if fix_det:  Sigma_rho /= np.sqrt((1-(rho**2)))
+        
         ax = axes[0][0]
         draw_oriented_ellipse( Sigma_rho, a, ax,color=color1,lw=3,order = 13)
         draw_oriented_ellipse( Sigma, a, ax,color=color2,lw=3, order = 12, style ='--')
@@ -896,8 +897,8 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
         ax.set_xticklabels([])
         ax.set_yticklabels([])
         ax.set_title(r"$\theta = 45°$",size = 15)
-        # ax.set_xlim(dx, dx)
-        # ax.set_ylim(dx, dx)
+        ax.set_xlim(-dx, dx)
+        ax.set_ylim(-dx, dx)
         
         theta = -np.deg2rad(25)
         ax = axes[0][1]
@@ -928,6 +929,10 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
         a -= center
         b -= center
         ax = axes[1][0]
+        
+        print('det:',np.linalg.det(Sigma_rho), np.linalg.det(Sigma))
+        print('tr:', np.trace(Sigma_rho), np.trace(Sigma))
+
         draw_oriented_ellipse( Sigma_rho, a, ax,color=color1,lw=3,order = 13)
         draw_oriented_ellipse( Sigma, a, ax,color=color2,lw=3, order = 12, style ='--')
         draw_oriented_ellipse( Sigma_rho, b, ax,color=color1,lw=3,order = 13)
@@ -981,7 +986,7 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
         fig, ax = plt.subplots(1,1, figsize=(8, 6))
 
         # Simulate 2AFC
-        theta, rho, syn = simulate_2AFC(V1 = 20, V2 = 20, n_theta_points=2000,n_rho_points=2000)
+        theta, rho, syn = simulate_2AFC(V1 = 20, V2 = 20, n_theta_points=2000,n_rho_points=2000, fix_det = fix_det)
         
         cmesh = ax.pcolor(np.rad2deg(theta), rho, syn, cmap = 'coolwarm',vmin = -3,vmax=3)
         cb = plt.colorbar(cmesh)
@@ -990,8 +995,9 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
         ax.set_ylabel("Noise Correlation",size = 18)
         ax.axhline(0, c='black',lw=0.5)
         ax.axvline(0, c='black',lw=0.5)
-        xline =  np.linspace(-np.pi/4,np.pi/4,1000)
-        ax.plot( np.rad2deg(xline), np.sin(2*xline), ls ='--',c='black', lw=0.5)
+        if not fix_det:
+               xline =  np.linspace(-np.pi/4,np.pi/4,1000)
+               ax.plot( np.rad2deg(xline), np.sin(2*xline), ls ='--',c='black', lw=0.5)
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
         plt.xticks(np.linspace(-45,45,7),size=15)
@@ -1026,16 +1032,22 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
         rhos = np.linspace(-1.0, 1.0,2*N+1)[1:-1]
         Sigma = np.array([[V1,0], [0, V2]])
         compute_pc = lambda x: 0.5*(1+erf(np.sqrt(d_prime_squared(b-a, x))/(2*np.sqrt(2))))
-        for dtheta in [10, 20, 30, 45,]:
+        for dtheta in [5, 10, 30, 20, 40, 45,]:
             theta = np.deg2rad(dtheta)
             Rotation = np.array([[np.cos(theta),-np.sin(theta)],[np.sin(theta),np.cos(theta)]])
             a = Rotation@a0
             b = Rotation@b0
             d = np.sqrt(d_prime_squared(b-a, Sigma))/(2*np.sqrt(2))    
             pc = 0.5*(1+erf(d))
-            variance = lambda x : np.array([[V1, x*np.sqrt(V1*V2)],
-                                           [x*np.sqrt(V1*V2), V2]])
+            
+            if fix_det:
+                variance = lambda x : np.array([[V1, x*np.sqrt(V1*V2)],
+                                               [x*np.sqrt(V1*V2), V2]])/np.sqrt((1-x**2))
+            else:                
+                variance = lambda x : np.array([[V1, x*np.sqrt(V1*V2)],
+                                               [x*np.sqrt(V1*V2), V2]])
             Sigma_correlated = np.array(list(map(variance,rhos)))
+
             pc_corr = np.array(list(map(compute_pc,Sigma_correlated)))
             pc_synergy = ((pc_corr/pc)-1)*100
             
@@ -1054,8 +1066,11 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
         plt.ylabel("Improvement in Percent Correct [%]", size = 18)
         plt.axhline(0,c='black',zorder = 12, lw=0.5)
         plt.axvline(0,c='black',zorder = 12, lw=0.5)
-        plt.xlim(0,None)     
-        plt.ylim(-6,6)
+        plt.xlim(0,None)
+        if fix_det:    
+            plt.ylim(-10,2)
+        else:
+            plt.ylim(-6,6)
         
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
@@ -1170,13 +1185,13 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
         pass
    # <------------------------------- FIFTH PANEL   
     if not skip_panelE:
-        beta = 0.2
+        beta = 2.5
         rhos, rhon, syn = compute_bar_experiment_MI(noise = beta,
                                                     N_points_deltat = 500, 
                                                     N_points_rhon   = 500)
         
         fig, ax = plt.subplots(1,1, figsize=(8, 6))
-        cmesh = ax.pcolor(rhos, rhon, syn, cmap = 'coolwarm',vmin = -2,vmax=2)
+        cmesh = ax.pcolor(rhos, rhon, syn, cmap = 'coolwarm',vmin = -.1,vmax=.1)
         cb = plt.colorbar(cmesh)
         cb.set_label("Synergy [%]", size = 18)
         ax.set_xlabel("Signal Correlation",  size = 18)
@@ -1187,7 +1202,7 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
         # ax.plot( x, np.sin(2*xline), ls ='--',c='black', lw=0.5)
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
-        plt.xticks(np.linspace(-1,1,7),size=15)
+        plt.xticks([-1,-0.75,-0.5,-0.25,0,0.25,0.5,1.0],size=15)
         plt.xlim(-1,1)
         # ax.set_xticklabels([ str(int(x))+'°' for x in np.linspace(-45,45,7)])
         plt.yticks(size=15)
@@ -1206,12 +1221,12 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
                     'b'             : 1.2731732385019432,
                     'center'        : 2.9616211149125977 - 0.21264734641020677,
                     'center_shift'  : 0.1,
-                    'N'             : 1000,
+                    'N'             : 100000,
                     'int_step'      : 100
                     } 
            
         system     = NeuralSystem(config)
-        theta_support = np.linspace(0,2*np.pi,360)
+        theta_support = np.linspace(0,2*np.pi,1000)
         Sigma_n = np.average(np.array(list( map(system.sigma, theta_support) )),axis=0)
         mus = np.array([[system.mu[0](t),system.mu[1](t)] for t in theta_support])
         v1_n,v2_n = Sigma_n[0,0], Sigma_n[1,1]
@@ -1580,6 +1595,7 @@ def paper_plot_figure_3( OUTDIR = "/home/paolos/Pictures/decoding/paper"):
     return
 
 def paper_plot_figure_4( OUTDIR  = "/home/paolos/Pictures/decoding/paper",
+                         mode = 'adaptive',
                          results = "/home/paolos/repo/neural_noise/data/information-limiting.npz",
                          a = None, R = None , b = None):
     
@@ -1594,7 +1610,7 @@ def paper_plot_figure_4( OUTDIR  = "/home/paolos/Pictures/decoding/paper",
 
     # Panel A
     conf = {    'label'         : 'poisson_selected',
-                'rho'           : 'adaptive',
+                'rho'           : mode,
                 'alpha'         : 0.9,
                 'beta'          : 0.09,
                 'V'             : 2,
@@ -1653,16 +1669,16 @@ def paper_plot_figure_4( OUTDIR  = "/home/paolos/Pictures/decoding/paper",
         x = a[ind]
         y = R[ind].mean(axis=1)
         
-        if beta == 0.3:
-            y[x<0.26] -= 0.2
-            y[ np.logical_and(x<0.6,x>0.42)] -= 1.5    
-            y[x>0.8] += 2.1
-            y[x>0.95] += 4.5
+        # if beta == 0.3:
+        #     y[x<0.26] -= 0.2
+        #     y[ np.logical_and(x<0.6,x>0.42)] -= 1.5    
+        #     y[x>0.8] += 2.1
+        #     y[x>0.95] += 4.5
 
-        elif beta == 0.2:
-            y[ x<0.25 ] = np.nan
-            x = np.append(x,0.2)
-            y = np.append(y,-0.7)
+        # elif beta == 0.2:
+        #     y[ x<0.25 ] = np.nan
+        #     x = np.append(x,0.2)
+        #     y = np.append(y,-0.7)
             
         # elif beta == 0.1:
         #    y[ [13, 15, 17, 18] ] = np.nan
@@ -1685,7 +1701,7 @@ def paper_plot_figure_4( OUTDIR  = "/home/paolos/Pictures/decoding/paper",
         x = x[sort_ind]
         y = y[sort_ind]
         
-        y = np.append( savgol_filter(y[x<0.8], 9, 3), y[x>=0.8])
+        y = np.append( savgol_filter(y[x<0.8], 11,2), y[x>=0.8])
         
         xline = np.linspace(0,a.max(),1000)
         spline = make_interp_spline(x,y, k=2)  # k=3 means cubic spline
