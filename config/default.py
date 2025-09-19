@@ -44,3 +44,4 @@ config = {  'label'         : 'adaptive_det_intermediate_sim_shift45deg',
             }
 """
 
+# 0.34999999999999987 dtheta: 1.14208314

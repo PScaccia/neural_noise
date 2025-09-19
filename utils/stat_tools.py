@@ -102,7 +102,7 @@ def compute_MSE(theta_sampling, theta, mode = 'cos', errors = False):
         else:
             return MSE, None
 
-def compute_innovation(results, errors = False):
+def compute_innovation(results, errors = False, silent_mode = False):
     from network import THETA
     from decoder import circular_moving_average
     from scipy.signal import savgol_filter
@@ -112,7 +112,7 @@ def compute_innovation(results, errors = False):
     R      = []
     R_err  = []
     
-    print("Reading results...")
+    if not silent_mode: print("Reading results...")
     for i,(label, sampling) in enumerate(results.items()):
                 if 'config' in label: continue
 
@@ -155,7 +155,8 @@ def compute_2AFC_mutual_information(vector, Sigma):
     return 1 + pe*np.log(pe) + (1-pe)*np.log((1-pe))
 
 def simulate_2AFC(V1 = 0.1, V2 = 0.1, n_theta_points = 360, n_rho_points = 500, fix_det = False):
-    
+    from scipy.special import erf
+
     Sigma = np.array([[V1,0], [0, V2]])
 
     a = np.array([-np.sqrt(2), 0.])
@@ -180,16 +181,24 @@ def simulate_2AFC(V1 = 0.1, V2 = 0.1, n_theta_points = 360, n_rho_points = 500, 
 
             scale_factor = 1 if not fix_det else np.sqrt((1-rho**2))
 
-            MI_correlated  = compute_2AFC_mutual_information(diff, cov_matrix(rho)/scale_factor)
-            MI_independent = compute_2AFC_mutual_information(diff, Sigma)
-            synergy_grid[i_row][i_col] = ((MI_correlated/MI_independent) - 1)*100
-        
+            d_ind = np.sqrt(d_prime_squared(diff, Sigma))/(2*np.sqrt(2))    
+            pc_ind = 0.5*(1+erf(d_ind)) 
+            
+            d = np.sqrt(d_prime_squared(diff, cov_matrix(rho)/scale_factor))/(2*np.sqrt(2))
+            pc = 0.5*(1+erf(d)) 
+
+            # MI_correlated  = compute_2AFC_mutual_information(diff, cov_matrix(rho)/scale_factor)
+            # MI_independent = compute_2AFC_mutual_information(diff, Sigma)
+            # synergy_grid[i_row][i_col] = ((MI_correlated/MI_independent) - 1)*100
+            synergy_grid[i_row][i_col] = ((pc/pc_ind) - 1)*100
+
     return angle_grid, rho_grid, np.ma.masked_invalid(synergy_grid)
 
-def compute_bar_experiment_MI( noise = 10, N_points_deltat = 200, N_points_rhon = 200, mode = 'poisson'):
+def compute_bar_experiment_MI( noise = 10, N_points_deltat = 200, N_points_rhon = 200,
+                               mode = 'poisson', N_theta = 1000):
     from network import NeuralSystem
     
-    theta_support  = np.linspace(0, 2*np.pi, 1000)
+    theta_support  = np.linspace(0, 2*np.pi, N_theta)
     delta_theta_ax = np.linspace(-np.pi,np.pi,N_points_deltat)
     rho_ax         = np.linspace(-1,1,N_points_rhon)
     rhos_ax        = np.zeros_like(delta_theta_ax)
@@ -207,8 +216,8 @@ def compute_bar_experiment_MI( noise = 10, N_points_deltat = 200, N_points_rhon 
                         'function'      : 'fvm',
                         'V'             : noise,
                         'A'             : 0.17340510276921817,
-                        'width'         : 0.2140327993142855,
-                        # 'width'         : 0.5140327993142855,
+                        # 'width'         : 0.2140327993142855,
+                        'width'         : 0.5140327993142855,
                         'flatness'      : 0.6585904840291591,
                         'b'             : 1.2731732385019432,
                         'center'        : 2.9616211149125977 - 0.21264734641020677,
@@ -217,8 +226,8 @@ def compute_bar_experiment_MI( noise = 10, N_points_deltat = 200, N_points_rhon 
                         'int_step'      : 100
                         }
             
-            system     = NeuralSystem(config)                
-            system_ind = NeuralSystem(config)
+            system     = NeuralSystem(config, N_trial = 100000)                
+            system_ind = NeuralSystem(config, N_trial = 100000)
             system_ind.alpha = 0.0
             if mode == 'constant': system_ind.rho = 0.0
             system_ind.generate_variance_matrix()
@@ -243,3 +252,89 @@ def compute_bar_experiment_MI( noise = 10, N_points_deltat = 200, N_points_rhon 
     rhos_grid, rhon_grid = np.meshgrid(rhos_ax, rho_ax)
     
     return rhos_grid, rhon_grid, synergy_grid
+
+def read_landscape_simulation( file_list, batch_size = 100):
+        # file = None, a = None, delta_theta = None, imp = None,
+        #                       vmin = -5, vmax = 5):
+    import copy
+    from network import THETA, NeuralSystem
+    import gc, os
+    from glob import glob
+    from tqdm import tqdm
+    
+    rho_n        = None
+    delta_theta  = None
+    Imp          = None
+    
+    for file in file_list:
+       data = np.load(file, mmap_mode="r")
+       print("Reading file ", file)
+       
+       for local_case in tqdm( data.files, desc = "Computing Decoding Improvement: "):
+                sampling = { local_case : data[local_case]}
+                _local_rhos, _delta_theta, _imp, _ = compute_innovation(sampling, silent_mode=True)
+                del(sampling)
+                gc.collect()
+               
+                if rho_n is None:
+                    rho_n       = _local_rhos
+                    delta_theta = _delta_theta
+                    Imp         = _imp.mean(axis=1)
+                else:
+                    rho_n       = np.append( rho_n,  _local_rhos )
+                    delta_theta = np.append( delta_theta,  _delta_theta )
+                    Imp         = np.append( Imp,  _imp.mean(axis=1))
+    
+    rhos_table = {}
+    for dt in np.unique(delta_theta):
+        config = {  
+                    'label'         : 'poisson_selected',
+                    'rho'           : "poisson" ,
+                    # 'alpha'         : np.arange(0.0,0.44,0.02),
+                    'alpha'         : 0.2,
+                    'beta'          : 1,
+                    'function'      : 'fvm',
+                    'A'             : 0.17340510276921817,
+                    'width'         : 0.2140327993142855,
+                    'flatness'      : 0.6585904840291591,
+                    'b'             : 1.2731732385019432,
+                    'center'        : 2.9616211149125977 - 0.21264734641020677,
+                    'center_shift'  : dt,
+                    'N'             : 30000,
+                    'int_step'      : 360
+                    }
+        system = NeuralSystem(config)
+        mus = np.array([ list(map(system.mu[0],THETA)), list(map(system.mu[1], THETA))])
+        rhos_table[dt] = np.corrcoef(mus,rowvar=True)[1,0]
+    
+    # Compute Signal Correlations
+    rho_s = np.array( [ rhos_table[dt] for dt in  delta_theta ])
+    
+    return rho_s, delta_theta, rho_n, Imp
+    
+# import sys
+#     rhos = {
+#             0.1: 0.993374161097031,
+#             0.34: 0.9250970654906174,
+#             0.55: 0.8113169966352249,
+#             0.69: 0.7129176778148408,
+#             1.04: 0.4149654916423102,
+#             1.39: 0.08665325125280325,
+#         }
+#     if any([a is None, delta_theta is None, imp is None]):
+#         if file is None: sys.exit("Give me results or npz filename!")
+#         data = dict(np.load(file))
+#         a, delta_theta, imp, _ = compute_innovation(data)
+#         del(data)
+
+#     imp[ np.abs(imp) > 1000 ] = np.nan
+#     imp = np.ma.masked_invalid(imp)
+    
+#     for dt in np.unique(delta_theta):
+#         ind = delta_theta == dt
+#         plt.scatter(  np.repeat(rhos[dt],a[ind].size), a[ind], c=imp[ind].mean(axis=1), 
+#                       s = 10, cmap='coolwarm', vmin = vmin, vmax = vmax)
+#     plt.axhline(0,c='black',lw=2);plt.axvline(0,c='black',lw=2)
+#     plt.show()    
+    
+#     return

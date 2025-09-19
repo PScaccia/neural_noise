@@ -46,7 +46,7 @@ def circular_moving_average(x,y,w):
 def simmetrize_curve( curve, center, copy_right = True):    
     return  np.append( curve[91:-1][::-1], curve[88:])
     
-def bayesian_decoder(r,mu, inv_sigma, det, theta_support):
+def bayesian_decoder(r, mu, inv_sigma, det, theta_support):
     
     # Define Integral Parameters
     # dtheta = (THETA[-1] - THETA[0])/N_step    
@@ -96,7 +96,7 @@ def MAP_decoder(system, r):
     from scipy.optimize import minimize_scalar
         
     # Define cost function
-    InvSigma = lambda x: system.inv_sigma(x)
+    InvSigma      = lambda x: system.inv_sigma(x)
     mu_vect       = lambda x :  np.array([system.mu[0](x), system.mu[1](x)]) 
     cost_function = lambda x : (  r - mu_vect(x) ).transpose().dot( InvSigma(x) ).dot( r - mu_vect(x) )
     

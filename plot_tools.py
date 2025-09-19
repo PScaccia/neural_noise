@@ -755,16 +755,22 @@ def plot_error_distr( error, other_errors = [] , label = '', other_labels = [],
 
 def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
                         skip_panelA = False, skip_panelB = False, skip_panelC = False,
-                        skip_panelD = False, skip_panelE = False, fix_det = False):
+                        skip_panelD = False, skip_panelE = False, skip_panelF = False,
+                        fix_det = False, data_decoding = "/home/paolos/repo/neural_noise/data/poisson_selected_shift_0p34.npz",
+                        alpha_decoding = None, beta_decoding = None, imp_decoding = None):
     from   scipy.stats import multivariate_normal
     from   scipy.special import expit  # Sigmoid function
     from   scipy.special import erf
     from   matplotlib.patches import Ellipse
     import matplotlib.cm as cm
     import matplotlib.colors as mcolors
-    from   utils.stat_tools import simulate_2AFC, d_prime_squared, compute_bar_experiment_MI
+    from   utils.stat_tools import simulate_2AFC, d_prime_squared, compute_bar_experiment_MI, compute_innovation
     from   matplotlib.collections import LineCollection
-    
+    from   scipy.interpolate import make_interp_spline
+    import matplotlib.colors as mcolors
+    from   matplotlib.collections import LineCollection
+    import matplotlib.cm as cm
+
     def compute_delta(x, a, b, Sigma_inv):
         const = 0.5 * (a.T @ Sigma_inv @ a - b.T @ Sigma_inv @ b)
         return (a - b).T @ Sigma_inv @ x - const
@@ -986,12 +992,12 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
         fig, ax = plt.subplots(1,1, figsize=(8, 6))
 
         # Simulate 2AFC
-        theta, rho, syn = simulate_2AFC(V1 = 20, V2 = 20, n_theta_points=2000,n_rho_points=2000, fix_det = fix_det)
+        theta, rho, syn = simulate_2AFC(V1 = 20, V2 = 20, n_theta_points=1000,n_rho_points=1000, fix_det = fix_det)
         
         cmesh = ax.pcolor(np.rad2deg(theta), rho, syn, cmap = 'coolwarm',vmin = -3,vmax=3)
         cb = plt.colorbar(cmesh)
-        cb.set_label("Synergy [%]", size = 18)
-        ax.set_xlabel(r"$\theta$",  size = 18)
+        cb.set_label("Improvement in Percent Correct [%]", size = 18)
+        ax.set_xlabel(r"$\theta$",  size = 20)
         ax.set_ylabel("Noise Correlation",size = 18)
         ax.axhline(0, c='black',lw=0.5)
         ax.axvline(0, c='black',lw=0.5)
@@ -1006,9 +1012,9 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
         plt.tight_layout()
         
         # Save second panel
-        OUTFIG = f"{OUTDIR}/figure1_panelB.pdf"
-        plt.savefig(OUTFIG, dpi = 1000, bbox_inches = 'tight')
-        print("Saved plot ",OUTFIG)
+        # OUTFIG = f"{OUTDIR}/figure1_panelB.pdf"
+        # plt.savefig(OUTFIG, dpi = 1000, bbox_inches = 'tight')
+        # print("Saved plot ",OUTFIG)
         OUTFIG = f"{OUTDIR}/figure1_panelB.png"
         plt.savefig(OUTFIG, dpi = 1000, bbox_inches = 'tight')
         print("Saved plot ",OUTFIG)
@@ -1187,8 +1193,10 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
     if not skip_panelE:
         beta = 2.5
         rhos, rhon, syn = compute_bar_experiment_MI(noise = beta,
-                                                    N_points_deltat = 500, 
-                                                    N_points_rhon   = 500)
+                                                    mode = 'poisson' if not fix_det else 'poisson_det',
+                                                    N_points_deltat = 100, 
+                                                    N_points_rhon   = 100,
+                                                    N_theta         = 360)
         
         fig, ax = plt.subplots(1,1, figsize=(8, 6))
         cmesh = ax.pcolor(rhos, rhon, syn, cmap = 'coolwarm',vmin = -.1,vmax=.1)
@@ -1243,9 +1251,82 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
         OUTFIG = f"{OUTDIR}/figure1_panelE.png"
         plt.savefig(OUTFIG, dpi = 1000, bbox_inches = 'tight')
         print("Saved plot ",OUTFIG)
+    else:
+        pass
+    
+    if not skip_panelF:
+        if any([ alpha_decoding is None, beta_decoding is None, imp_decoding is None]):
+            data = dict( np.load(data_decoding) )
+            alpha_decoding, beta_decoding, imp_decoding,_ = compute_innovation(data)
+            del(data)
+        
+        fig, ax = plt.subplots(1,1, figsize=(8, 6))
+        cmap = cm.coolwarm
+        norm = mcolors.Normalize(vmin=-5, vmax = 5)
+        def moving_average(data, window_size=5):
+            window = np.ones(window_size) / window_size
+            return np.convolve(data, window, mode='valid')
+
+        for b in np.unique(beta_decoding):
+            
+            ind = beta_decoding == b
+            x = alpha_decoding[ind]
+            y = imp_decoding[ind].mean(axis=1)
+
+            sort_ind =np.argsort(x)
+            x = x[sort_ind]
+            y = y[sort_ind]
+
+            if b == 1:
+                m = 8
+                y = np.append( moving_average(y[x<0.65], window_size = m), y[x>=0.65])
+                x = np.append( x[x<0.65][(m-1)//2:-(m-1)//2], x[x>=0.65])
+            # elif b == 2:
+            #     m = 5
+            #     t = 0.9
+            #     y = np.append( savgol_filter(y[x<t], 9, 2), y[x>=t])
+                # x = np.append( x[x<t][(m-1)//2:-(m-1)//2], x[x>=t])
+            else:
+                m = 5
+                y = moving_average(y, window_size = m)
+                x = x[(m-1)//2:-(m-1)//2]
+                
+            x = np.append(0,x)
+            y = np.append(0,y)
+            
+            xline = np.linspace(0,alpha_decoding.max(),120)
+            spline = make_interp_spline(x,y, k=2)  # k=3 means cubic spline
+            y_smooth = spline(xline)
+            
+            points   = np.array([xline, y_smooth]).T.reshape(-1, 1, 2)
+            segments = np.concatenate([points[:-1], points[1:]], axis=1)
+            lc = LineCollection(segments, cmap=cmap, norm=norm, linewidth=6, zorder = 13)
+            lc.set_array(y_smooth)
+            ax.add_collection(lc)
+            sm = cm.ScalarMappable(cmap=cmap, norm=norm)
+            sm.set_array([])
+            ax.plot(xline,y_smooth)
+        
+        plt.xlabel("Noise Correlation", size = 18)
+        plt.ylabel("Improvement in RMSE [%]", size = 18)
+        plt.axhline(0,lw=1,c='black')
+        plt.axhline(0,c='black',zorder = 12, lw=0.5)
+        plt.axvline(0,c='black',zorder = 12, lw=0.5)
+        plt.xlim(0,1)
+        plt.ylim(-5,15)
+
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.set_xlim(0,1)
+
+        OUTFIG = f"{OUTDIR}/figure1_panelF.pdf"
+        plt.savefig(OUTFIG, dpi = 300, bbox_inches = 'tight')
+        print("Saved plot ",OUTFIG)
 
     else:
         pass
+    
+    
     return
 
     
@@ -1258,7 +1339,6 @@ def paper_plot_figure_2( system, improvement_list = [], file = None,
         diff[ diff > np.pi] = np.pi - diff[ diff > np.pi]
         diff[ diff < -np.pi] = 2*np.pi + diff[ diff < -np.pi]
         return diff
-
     if not skip_frame:
         plt.figure(figsize=(12,12))
         ax = plt.subplot(111)
@@ -1276,8 +1356,6 @@ def paper_plot_figure_2( system, improvement_list = [], file = None,
         ax.spines['right'].set_visible(False)
         ax.spines['bottom'].set_visible(False)
         ax.spines['left'].set_visible(False)
-    
-    
         DX = 2
         
         plt.plot( [0-DX,0-DX],         [1.4, 2.5], marker="",ms = 200,c='black', linewidth = 8)
@@ -1296,14 +1374,13 @@ def paper_plot_figure_2( system, improvement_list = [], file = None,
         plt.text(-0.08,2.75,"High", size=28,rotation = 90)
         
         plt.xlim(-0.2-DX,3.5)
-        plt.ylim(-0.2-DX,3.5)
-    
+        plt.ylim(-0.2-DX,3.5)  
         OUTFIG = f"{OUTDIR}/figure2_frame.pdf"
         plt.savefig(OUTFIG, dpi = 300, bbox_inches = 'tight')
         print("Saved plot ", OUTFIG)
     else:
         pass
-    
+        pass
     TARGET_STIM = np.pi*3/4 - 0.3
     INDX = np.argmin( abs(THETA - TARGET_STIM))
 
@@ -1327,7 +1404,6 @@ def paper_plot_figure_2( system, improvement_list = [], file = None,
         system_ind = NeuralSystem(config)
         system_ind.alpha = 0.0
         system_ind.generate_variance_matrix()
-
         if len(improvement_list) == 0:
             sys.exit("Computatation of improvement not implemented yet!")
         else:
@@ -1422,7 +1498,6 @@ def paper_plot_figure_2( system, improvement_list = [], file = None,
                           outfile = OUTFIG, filter_hist = True)
         diff_control_case1 = np.copy(diff_control)
         plt.clf()
-
         # CASE2
         OUTFIG = f"{OUTDIR}/figure2_errors_2.pdf"
         sampling = np.load("/home/paolos/Desktop/sampling_case2.npz")
@@ -1483,12 +1558,8 @@ def paper_plot_figure_2( system, improvement_list = [], file = None,
                           xticks = [-20,-10,0,10,20],
                           outfile = OUTFIG, filter_hist = False)
         plt.clf()
-
-        
     else:
         pass
-
-    
     return
 
 def paper_plot_figure_3( OUTDIR = "/home/paolos/Pictures/decoding/paper"):
@@ -1734,10 +1805,73 @@ def paper_plot_figure_4( OUTDIR  = "/home/paolos/Pictures/decoding/paper",
     ax.set_xticklabels([ "{:.1f}".format(x) for x in np.arange(0,1.2,0.2)], size = 18)
     ax.set_yticklabels(np.arange(-10,15,5),  size = 18)
 
-    # Save third panel
-    OUTFIG = f"{OUTDIR}/figure4.pdf"
+    OUTFIG = f"{OUTDIR}/figure4.png"
     plt.savefig(OUTFIG, dpi = 300, bbox_inches = 'tight')
     print("Saved plot ",OUTFIG)
     
     
     return
+
+
+def plot_landscape(rho_s , rho_n, imp,
+                   dy = 0.05, dx = 0.1, 
+                   vmin = -1  , vmax = 1  ,
+                   xmin = -0.8, xmax = 0.8,
+                   ymin = -0.5, ymax = 0.5, 
+                   interp = 'bilinear',
+                   OUTDIR = "/home/paolos/Pictures/decoding/paper"):
+    """
+    This function plot the decoding improvement landscape
+    as a colormap on the 2d plane having signal correlation (rho_s)
+    on the x-axis and noise correlation (rho_n) on the y-axis.
+
+    Parameters
+    ----------
+    rho_s : np.ndarray
+        Flatten array containing signal correlations.
+    rho_n : np.ndarray
+        Flatten array containing noise correlations.        
+    imp : TYPE
+        Flatten array containing decoding improvement.
+    dy : double, optional
+        Meshgrid resolution along the y-axis. The default is 0.05.
+    dx : double, optional
+        Meshgrid resolution along the x-axis. The default is 0.1.
+    OUTDIR : str, optional
+        Output folder in which plot will be saved. The default is "/home/paolos/Pictures/decoding/paper".
+
+    Returns
+    -------
+    None.
+
+    """
+    # Create X,Y,Z meshgrid
+    x_unique = np.arange(-1,1,dx)
+    y_unique = np.arange(-1,1,dy)
+    X, Y = np.meshgrid(x_unique, y_unique)
+    Z = np.full_like(X, np.nan, dtype=float)
+    
+    # Fill Z with corresponding values
+    for iy, (xrow, yrow) in enumerate(zip(X,Y)):
+        for ix , (x_value, y_value) in enumerate(zip(xrow,yrow)):
+            # ix = np.argmin( np.abs( x_unique - xi))
+            # iy = np.argmin( np.abs( y_unique - yi))
+            ind = np.intersect1d( np.where( np.abs( rho_s - x_value) <= dx*0.5)[0],  np.where(np.abs( rho_n - y_value) <= dy*0.5)[0] )
+            # Z[iy, ix] = zi[ind].mean()
+            Z[iy, ix] = imp[ind].mean()
+        
+    plt.imshow(Z, extent=[x_unique.min(), x_unique.max(), y_unique.min(), y_unique.max()],\
+               cmap ='coolwarm',vmin=vmin,vmax=vmax,
+               origin="lower", aspect="auto",interpolation=interp)
+    cb = plt.colorbar(label="")
+    cb.set_label("Decoding Improvement [%]",size = 15)
+    plt.xlabel("Signal Correlation",size = 15)
+    plt.ylabel("Noise Correlation", size = 15)
+    plt.axhline(0, c='black',lw=1)
+    plt.axvline(0, c='black',lw=1)
+    plt.ylim(ymin, ymax)
+    plt.xlim(xmin, xmax)
+
+    plt.show()   
+    
+    return 
