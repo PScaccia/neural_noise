@@ -87,7 +87,7 @@ def compute_rho_star( system ):
     
     return 2*Vn*mu_cov/(Vtot**2 - Vn**2)
 
-def compute_MSE(theta_sampling, theta, mode = 'cos', errors = False):
+def compute_MSE(theta_sampling, theta, mode = 'mse', errors = False):
     if mode == 'cos':
         error = np.array([  1 - np.cos(t - theta_sampling[i,:] )  for i,t in enumerate(theta) ])
         return np.mean( error, axis = 1)

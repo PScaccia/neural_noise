@@ -66,8 +66,11 @@ def bayesian_decoder(r, mu, inv_sigma, det, theta_support):
 
     # P_post           = lambda x : np.exp(-0.5*cost_function(x))
     
-    delta_r = r.reshape(r.shape[0],-1) - mu
-    cost_function    = np.array([ dr.T@inv_matrix@dr + np.log(d) for dr, inv_matrix, d in zip(delta_r.transpose(),inv_sigma,det) ])
+    log_d = np.log(det)
+    delta_r = r.reshape(*r.shape,-1) - mu
+    cost_function = np.einsum("jab,ibj,iaj->ij", inv_sigma, delta_r, delta_r) + log_d
+    
+    # cost_function    = np.array([ dr.T@inv_matrix@dr + np.log(d) for dr, inv_matrix, d in zip(delta_r.transpose(),inv_sigma,det) ])
     P_post           = np.exp(-0.5*cost_function)
 
     # Define Integrand Functions
@@ -81,8 +84,10 @@ def bayesian_decoder(r, mu, inv_sigma, det, theta_support):
     # cos *= norm_factor
 
     # Integrate via Simpson's rule
-    sin = scipy.integrate.simpson(P_post_sin, x = theta_support)
-    cos = scipy.integrate.simpson(P_post_cos, x = theta_support)
+    # sin = scipy.integrate.simpson(P_post_sin, x = theta_support)
+    # cos = scipy.integrate.simpson(P_post_cos, x = theta_support)
+    sin = P_post_sin.mean(axis=1)
+    cos = P_post_cos.mean(axis=1)
     
     # Integrate via Quadrate Method
     # sin,_ = scipy.integrate.quad(P_post_sin, 0, 2*np.pi)
@@ -90,7 +95,9 @@ def bayesian_decoder(r, mu, inv_sigma, det, theta_support):
     
     extimate = np.arctan2(sin, cos)
 
-    return extimate if extimate >= 0 else extimate + 2*np.pi
+    # return extimate if extimate >= 0 else extimate + 2*np.pi
+    extimate[ extimate < 0 ] += 2*np.pi
+    return extimate 
 
 def MAP_decoder(system, r):
     from scipy.optimize import minimize_scalar
@@ -111,22 +118,24 @@ def sample_theta_ext(system, theta_array, decoder = 'bayesian', N_step = 500,
                      multi_thread = False, num_threads = 5):
 
     theta_ext_sampling = np.empty( ( len(theta_array), system.N_trial ) )*np.nan
-    theta_support = np.linspace(THETA[0], THETA[-1], N_step)
-    mu = np.array([ list(map(system.mu[0],theta_support)),list(map(system.mu[1],theta_support))])
-    inv_sigma = np.array(list(map(system.inv_sigma,theta_support)))
-    det = np.array(list(map(lambda x: np.linalg.det(system.sigma(x)),theta_support)))
+    theta_support      = np.linspace(THETA[0], THETA[-1], N_step)
+    mu                 = np.array([ list(map(system.mu[0],theta_support)),list(map(system.mu[1],theta_support))])
+    inv_sigma          = np.array(list(map(system.inv_sigma,theta_support)))
+    det                = np.array(list(map(lambda x: np.linalg.det(system.sigma(x)),theta_support)))
 
     if multi_thread is False:   
         # Single Thread         
         for i,theta in zip(tqdm(range(len(theta_array)), desc = 'Computing decoding error: ' ), theta_array):
             r_sampling = system.neurons(theta)
             if decoder == 'bayesian':
-                decoder_f = lambda r: bayesian_decoder(r, mu, inv_sigma, det, theta_support)
+                theta_ext_sampling[i,:] = bayesian_decoder(r_sampling, mu, inv_sigma, det, theta_support)
+                # decoder_f = lambda r: bayesian_decoder(r, mu, inv_sigma, det, theta_support)
             elif decoder == 'MAP':
+                sys.exit("Not implemented yet!")
                 decoder_f = lambda r: MAP_decoder(system, r)
             else:
                 sys.exit("Not implemented yet!")
-            theta_ext_sampling[i,:] = list(map(decoder_f,r_sampling))
+            # theta_ext_sampling[i,:] = decodelist(map(decoder_f,r_sampling))
     else:
         # Multi Thread !!!
         from multiprocess import Pool
@@ -141,12 +150,14 @@ def sample_theta_ext(system, theta_array, decoder = 'bayesian', N_step = 500,
                 r_sampling = system.neurons(theta)[:n,:]
 
                 if decoder == 'bayesian':
-                    decoder_f = lambda r: bayesian_decoder(r, mu, inv_sigma, det, theta_support)
+                    _tmp[i,:] = bayesian_decoder(r_sampling, mu, inv_sigma, det, theta_support)
+                    # decoder_f = lambda r: bayesian_decoder(r, mu, inv_sigma, det, theta_support)
                 elif decoder == 'MAP':
+                    sys.exit("Not implemented yet!")
                     decoder_f = lambda r: MAP_decoder(system, r)
                 else:
                     sys.exit("Not implemented yet!")
-                _tmp[i,:] = list(map(decoder_f,r_sampling))
+
             return _tmp
         N = system.N_trial//num_threads
 
