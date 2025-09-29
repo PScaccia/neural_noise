@@ -1845,6 +1845,8 @@ def plot_landscape(rho_s , rho_n, imp,
     None.
 
     """
+    
+    
     # Create X,Y,Z meshgrid
     x_unique = np.arange(-1,1,dx)
     y_unique = np.arange(-1,1,dy)
@@ -1872,6 +1874,44 @@ def plot_landscape(rho_s , rho_n, imp,
     plt.ylim(ymin, ymax)
     plt.xlim(xmin, xmax)
 
-    plt.show()   
+    delta_t = np.linspace(-np.pi,np.pi,200)
+    theta_support = np.linspace(0,2*np.pi,360)
+    rho_s_support = np.zeros_like(delta_t)
+    rho_star = np.zeros_like(delta_t)
+
+    for i,dt in enumerate(delta_t):
+        config = {  'rho'           : 'poisson',
+                    'alpha'         : 0.9,
+                    'beta'          : 1,
+                    'function'      : 'fvm',
+                    'V'             : 1,
+                    'A'             : 0.17340510276921817,
+                    'width'         : 0.2140327993142855,
+                    # 'width'         : 0.5140327993142855,
+                    'flatness'      : 0.6585904840291591,
+                    'b'             : 1.2731732385019432,
+                    'center'        : 2.9616211149125977 - 0.21264734641020677,
+                    'center_shift'  : dt,
+                    'N'             : 100000,
+                    'int_step'      : 100
+                    }        
+        system     = NeuralSystem(config)
+
+        Sigma_n = np.average(np.array(list( map(system.sigma, theta_support) )),axis=0)
+        mus = np.array([[system.mu[0](t),system.mu[1](t)] for t in theta_support])
+        v1_n,v2_n = Sigma_n[0,0], Sigma_n[1,1]
+        v1_s,v2_s = np.var(mus,axis=0)
+        A = np.sqrt( (v1_s*v2_s)/(v1_n*v2_n))
+        B = np.sqrt((v1_n + v1_s)*(v2_n + v2_s)/(v1_s*v2_s))
+        local_rho_s = np.corrcoef(mus, rowvar=False)[1,0]
+        rho_star[i] = -2*A*local_rho_s/(1+(local_rho_s**2 - B**2)*(A**2))
+        rho_s_support[i] = local_rho_s
+        
+    plt.plot(rho_s_support, rho_star, ls = '--', c = 'black', lw = 0.5)
+    plt.gca().spines['top'].set_visible(False)
+    plt.gca().spines['right'].set_visible(False)
+    OUTFIG = f"{OUTDIR}/figure1_panelE.pdf"
+    plt.savefig(OUTFIG, dpi = 300, bbox_inches = 'tight')
+    print("Saved plot ",OUTFIG)
     
     return 

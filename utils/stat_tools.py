@@ -272,19 +272,22 @@ def read_landscape_simulation( file_list, batch_size = 100):
        
        for local_case in tqdm( data.files, desc = "Computing Decoding Improvement: "):
                 sampling = { local_case : data[local_case]}
-                _local_rhos, _delta_theta, _imp, _ = compute_innovation(sampling, silent_mode=True)
-                del(sampling)
-                gc.collect()
-               
-                if rho_n is None:
-                    rho_n       = _local_rhos
-                    delta_theta = _delta_theta
-                    Imp         = _imp.mean(axis=1)
-                else:
-                    rho_n       = np.append( rho_n,  _local_rhos )
-                    delta_theta = np.append( delta_theta,  _delta_theta )
-                    Imp         = np.append( Imp,  _imp.mean(axis=1))
-    
+                try:
+                    _local_rhos, _delta_theta, _imp, _ = compute_innovation(sampling, silent_mode=True)
+                    del(sampling)
+                    gc.collect()
+                   
+                    if rho_n is None:
+                        rho_n       = _local_rhos
+                        delta_theta = _delta_theta
+                        Imp         = _imp.mean(axis=1)
+                    else:
+                        rho_n       = np.append( rho_n,  _local_rhos )
+                        delta_theta = np.append( delta_theta,  _delta_theta )
+                        Imp         = np.append( Imp,  _imp.mean(axis=1))
+                except Exception as e:
+                    print("An error occurred: ",e)
+                    continue
     rhos_table = {}
     for dt in np.unique(delta_theta):
         config = {  
