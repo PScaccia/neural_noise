@@ -9,8 +9,8 @@ import numpy as np
 import os, sys
 from   network import NeuralSystem, THETA
 from   decoder import sample_theta_ext
-from   run_decoding_simulation import parser, read_conf, simulation, save_results
-
+from   run_decoding_simulation import parser, read_conf, simulation
+from   utils.io_tools import save_results
 
 def main( config, args):
     """
@@ -40,19 +40,20 @@ def main( config, args):
         case['alpha']         = a
         case['center_shift']  = dtheta
         case['beta']          = b
+        key = 'a_{:.2f}_dtheta_{:.2f}'.format(a,dtheta)
         
         # Run single simulation with alpha = a and center_shift = dtheta
         if check_simulated(dtheta):
             # If it has already ran the independent case for that noise take that
             old_case = [ x for x in results.keys() if '_dtheta_{:.2f}'.format(dtheta) in x][-1]
-            results['a_{:.2f}_dtheta_{:.2f}'.format(a,dtheta)] = [ simulation(case, args,skip_independent = True)[0], 
+            results[key] = [ simulation(case, args,skip_independent = True)[0], 
                                                                    results[old_case][1]   ]
         else:
             # Otherwise, simulate both cases
-            results['a_{:.2f}_dtheta_{:.2f}'.format(a,dtheta)] = simulation(case, args)
+            results[key] = simulation(case, args)
         
         # Save results
-        save_results(results, outfile )
+        save_results({ key : results[key] }, outfile )
             
     return
 

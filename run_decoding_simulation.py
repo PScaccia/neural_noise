@@ -9,6 +9,7 @@ import numpy as np
 import os, sys
 from   network import NeuralSystem, THETA
 from   decoder import sample_theta_ext
+from   utils.io_tools import save_results
 
 def parser():
     import argparse
@@ -54,17 +55,18 @@ def main( config, args):
         print("Running simulation with alpha: {} beta: {}".format(a,b))       
         case['alpha'] = a
         case['beta']  = b
+        key = 'a_{:.2f}_b_{:.2f}'.format(a,b)
 
         # Run single simulation with alpha = a and beta = b
         if check_simulated_noise(b):
             # If it has already ran the independent case for that noise take that
             old_case = [ x for x in results.keys() if '_b_{:.2f}'.format(b) in x][-1]
-            results['a_{:.2f}_b_{:.2f}'.format(a,b)] = [ simulation(case, args,skip_independent = True)[0], 
+            results[key] = [ simulation(case, args,skip_independent = True)[0], 
                                                          results[old_case][1]   ]
 
         else:
             # Otherwise, simulate both cases
-            results['a_{:.2f}_b_{:.2f}'.format(a,b)] = simulation(case, args)
+            results[key] = simulation(case, args)
         
         # Save results
         save_results(results, outfile )
@@ -97,52 +99,6 @@ def simulation( config, args, skip_independent = False ):
     
         return [ theta_sampling, theta_sampling_control ]
 
-def save_results(results, file ):
-    
-    if os.path.isfile(file):
-        # If file already exists, update it with new results
-        saved_data = dict(np.load(file))
-        for key, result in results.items():
-            if key not in saved_data.keys():
-                # Add new case...
-                saved_data[key] = result
-
-        np.savez_compressed(file, **saved_data)
-        print("Updated file ",file)
-    else:
-        # If file doesn't exist, create it
-        np.savez_compressed(file, **results)
-        print("Created file ",file)
-    return
-
-def remove_case_from_results(file, a = None, b = None):
-    
-    if a is None and b is None: sys.exit("Specify alpha or beta for the case to be removed")
-
-    os.system(f"mv {file} {file}.bkp")    
-    print(f"Created bkp file {file}.bkp.")
-
-    a_keys = []
-    b_keys = []
-    
-    data = dict(np.load(file+'.bkp'))
-    if a is not None and b is not None:
-        sys.exit("Not implemented yet!")
-
-    elif a is not None:
-        keys = [k for k in data.keys() if "a_{:.2f}_".format(a) in k ]
-
-    elif b is not None:
-        keys = [k for k in data.keys() if "b_{:.2f}".format(b) in k] 
-
-    for k in keys:
-        del(data[k])
-        print(f"Deleted case {k}!")
-        
-    save_results(data, file)
-    del(data)        
-    
-    return
 
 if __name__ == '__main__':
     
