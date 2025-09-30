@@ -29,13 +29,12 @@ def save_results(results, file, n_gb = 2, last_case = None):
     result_files = glob.glob(f"{parent}/{stem}*.npz")
     result_files = sorted(result_files, key=natural_key)    
     
-    print(result_files)
     if len(result_files) != 0:
         file = result_files[-1]
 
         if os.path.getsize(file) > MAX_SIZE:
-            print("Trovato e troppo grande")
-            filename =  "_".join(stem.split('_')[:-1])
+
+            filename =  "_".join(stem.split('_pt')[0:])
             if filename == '': filename = stem
             filename += f'_pt{len(result_files)+1}.npz'
             file = parent + '/' + filename
@@ -44,8 +43,6 @@ def save_results(results, file, n_gb = 2, last_case = None):
             print("Created file ",file)
 
         else:
-            print("Trovato e OK: aggiorna")
-
             # If file already exists and with size less than MAX_SIZE, update it with new results
             saved_data = dict(np.load(file))
             for key, result in results.items():
@@ -56,8 +53,6 @@ def save_results(results, file, n_gb = 2, last_case = None):
             np.savez_compressed(file, **saved_data)
             print("Updated file ",file)
     else:
-        print("Nuovo")
-        
         np.savez_compressed(file, **results)
         print("Created file ",file)
     return
