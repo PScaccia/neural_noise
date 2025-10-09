@@ -4,6 +4,8 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.pkl
+*.hdf5
+*/*.hdf5
 data/*
 
 # C extensions

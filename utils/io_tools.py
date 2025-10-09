@@ -149,7 +149,7 @@ def save_to_netcdf(filename, data_dict):
                 var[slc] = arr
 
 
-def save_results_hdf5(filename, data_dict):
+def save_results_hdf5(data_dict, filename):
     """
     Salva o appende i risultati di una simulazione in un file HDF5.
 
@@ -187,8 +187,8 @@ def save_results_hdf5(filename, data_dict):
 
                 # Estendi dataset sull’ultimo asse
                 new_size = dset.shape[-1] + arr.shape[-1]
-                dset.resize(new_size, axis=-1)
-                dset[..., -arr.shape[-1]:] = arr
+                dset.resize(new_size, axis=2)
+                dset[:,:, -arr.shape[-1]:] = arr
 
     print(f"Created file {filename}" if mode == 'w' else f"Updated file {filename}")
     return

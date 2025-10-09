@@ -9,7 +9,7 @@ import numpy as np
 import os, sys
 from   network import NeuralSystem, THETA
 from   decoder import sample_theta_ext
-from   utils.io_tools import save_results
+from   utils.io_tools import save_results, save_results_hdf5
 
 def parser():
     import argparse
@@ -52,7 +52,9 @@ def main( config, args):
     alpha_grid, beta_grid = np.meshgrid( config['alpha'], config['beta'] )    
     case = copy.deepcopy(config)
     results = {}
-    outfile = "./data/" + config['label'] + '.hdf5' if args.hdf5 else '.npz'
+    outfile = "./data/" + config['label']
+    if args.hdf5: outfile += '.hdf5'
+    else:  outfile += '.npz'
     
     # Function to check if the independent case has already been simulated
     check_simulated_noise = lambda x : len([ k for k in results.keys() if '_b_{:.2f}'.format(x) in k]) != 0
@@ -78,7 +80,7 @@ def main( config, args):
             results[key] = simulation(case, args)
         
         # Save results
-        if args.hdf5: save_results({ key : results[key] }, outfile)
+        if args.hdf5: save_results_hdf5({ key : results[key] }, outfile)
         else: save_results({ key : results[key] }, outfile )
             
     return
