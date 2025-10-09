@@ -16,6 +16,7 @@ def parser():
     parser = argparse.ArgumentParser()
     parser.add_argument('--n_proc',type=int,required=False, default=20,help="Number of workers")
     parser.add_argument('--multi_thread',action='store_true', default=True,help="Multi-threading")
+    parser.add_argument('--hdf5',action='store_true', default=False,help="Save in HDF5 format")
     parser.add_argument('--config','-c',type=str,required=False,default='config/special.pkl',help="Configuration File")
     return parser.parse_args()
 
@@ -33,17 +34,25 @@ def read_conf( file ):
             config = pickle.load(handle)
     return config
 
+def print_intro(args, message = ''):
+    print()
+    print(message)
+    for key, value in sorted(vars(args).items()):
+        print(f"{key:<15} : {value}")
+    print()
+    return
+
+
 def main( config, args):
     import copy
-    
-    print("RUNNING SIMULATION WITH CONFIG FILE: ",args.config)
-    print(args.multi_thread)
-    print()
+
+    # Print All command-line arguments    
+    print_intro(args, message = "Running decoding simulation with fixed tuning curves.")
     
     alpha_grid, beta_grid = np.meshgrid( config['alpha'], config['beta'] )    
     case = copy.deepcopy(config)
     results = {}
-    outfile = "./data/" + config['label'] + '.npz'
+    outfile = "./data/" + config['label'] + '.hdf5' if args.hdf5 else '.npz'
     
     # Function to check if the independent case has already been simulated
     check_simulated_noise = lambda x : len([ k for k in results.keys() if '_b_{:.2f}'.format(x) in k]) != 0
@@ -69,7 +78,8 @@ def main( config, args):
             results[key] = simulation(case, args)
         
         # Save results
-        save_results(results, outfile )
+        if args.hdf5: save_results({ key : results[key] }, outfile)
+        else: save_results({ key : results[key] }, outfile )
             
     return
 

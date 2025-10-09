@@ -8,8 +8,10 @@ Created on Mon Sep 29 17:23:38 2025
 import os, sys
 import glob
 import numpy as np
-from pathlib import Path
+from   pathlib import Path
 import copy, re
+import gc
+import h5py
 
 def natural_key(s):
     # divide in sequenze di numeri e non numeri
@@ -52,9 +54,12 @@ def save_results(results, file, n_gb = 2, last_case = None):
     
             np.savez_compressed(file, **saved_data)
             print("Updated file ",file)
+            del(saved_data)
     else:
         np.savez_compressed(file, **results)
         print("Created file ",file)
+
+    gc.collect()
     return
 
 def remove_case_from_results(file, a = None, b = None):
@@ -142,3 +147,48 @@ def save_to_netcdf(filename, data_dict):
                 # costruiamo slice per appendere sull'ultimo asse
                 slc = (slice(None),) * (arr.ndim - 1) + (slice(old_size, new_size),)
                 var[slc] = arr
+
+
+def save_results_hdf5(filename, data_dict):
+    """
+    Salva o appende i risultati di una simulazione in un file HDF5.
+
+    Se il file o il dataset non esistono -> vengono creati.
+    Se esistono -> i dati vengono appesi lungo l'ultimo asse.
+
+    Parameters
+    ----------
+    filename : str
+        Percorso del file .h5 su cui salvare.
+    data_dict : dict
+        Dizionario con {chiave: np.ndarray}.
+        Tutti gli array devono essere compatibili per l'append sull'ultimo asse.
+    """
+    mode = 'a' if os.path.exists(filename) else 'w'
+
+    with h5py.File(filename, mode) as f:
+        for key, arr in data_dict.items():
+            arr = np.asarray(arr)
+
+            if key not in f:
+                # Crea un dataset nuovo, abilitando la possibilità di append
+                maxshape = list(arr.shape)
+                maxshape[-1] = None  # ultimo asse estensibile
+                f.create_dataset(
+                    key, data=arr, maxshape=tuple(maxshape), compression="gzip"
+                )
+            else:
+                dset = f[key]
+                # Controllo di compatibilità delle dimensioni (tutti tranne ultimo asse)
+                if dset.shape[:-1] != arr.shape[:-1]:
+                    raise ValueError(
+                        f"Shape incompatibile per append: {key}: {dset.shape} vs {arr.shape}"
+                    )
+
+                # Estendi dataset sull’ultimo asse
+                new_size = dset.shape[-1] + arr.shape[-1]
+                dset.resize(new_size, axis=-1)
+                dset[..., -arr.shape[-1]:] = arr
+
+    print(f"Created file {filename}" if mode == 'w' else f"Updated file {filename}")
+    return

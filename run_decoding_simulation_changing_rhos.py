@@ -9,8 +9,8 @@ import numpy as np
 import os, sys
 from   network import NeuralSystem, THETA
 from   decoder import sample_theta_ext
-from   run_decoding_simulation import parser, read_conf, simulation
-from   utils.io_tools import save_results
+from   run_decoding_simulation import parser, read_conf, simulation, print_intro
+from   utils.io_tools import save_results, save_results_hdf5
 
 def main( config, args):
     """
@@ -18,14 +18,13 @@ def main( config, args):
     """
     import copy
     
-    print("RUNNING SIMULATION WITH CONFIG FILE: config/label.pkl")
-    print(args.multi_thread)
-    print()
+    # Print All command-line arguments    
+    print_intro(args, message = "Running decoding simulation changing tuning curves.")
     
     alpha_grid, delta_theta = np.meshgrid( config['alpha'], config['center_shift'] )    
     case = copy.deepcopy(config)
     results = {}
-    outfile = "./data/" + config['label'] + '.npz'
+    outfile = "./data/" + config['label'] + '.hdf5' if args.hdf5 else '.npz'
     
     # Function to check if the independent case has already been simulated
     check_simulated = lambda x : len([ k for k in results.keys() if '_dtheta_{:.2f}'.format(x) in k]) != 0
@@ -35,6 +34,9 @@ def main( config, args):
     # Iterate on parameter grid
     for a, dtheta in zip(  alpha_grid.flatten(), 
                            delta_theta.flatten()   ):
+        
+        # TMP EDIT
+        results = {}
 
         print("Running simulation with alpha: {} dtheta: {}".format(a,dtheta))       
         case['alpha']         = a
@@ -53,7 +55,8 @@ def main( config, args):
             results[key] = simulation(case, args)
         
         # Save results
-        save_results({ key : results[key] }, outfile )
+        if args.hdf5: save_results({ key : results[key] }, outfile)
+        else: save_results({ key : results[key] }, outfile )
             
     return
 
