@@ -253,7 +253,7 @@ def compute_bar_experiment_MI( noise = 10, N_points_deltat = 200, N_points_rhon 
     
     return rhos_grid, rhon_grid, synergy_grid
 
-def read_landscape_simulation( file_list, batch_size = 100):
+def read_landscape_simulation( file_list, batch_size = 100, n_workers = 1):
         # file = None, a = None, delta_theta = None, imp = None,
         #                       vmin = -5, vmax = 5):
     import copy
@@ -263,58 +263,71 @@ def read_landscape_simulation( file_list, batch_size = 100):
     from tqdm import tqdm
     import h5py
     
-    rho_n        = None
-    delta_theta  = None
-    Imp          = None
     
-    for file in file_list:
-        ext = os.path.splitext(file)[-1]
-        if ext == '.npz':
-               data = np.load(file, mmap_mode="r")
-               print("Reading NPZ file ", file)
-               
-               for local_case in tqdm( data.files, desc = "Computing Decoding Improvement: "):
-                        sampling = { local_case : data[local_case]}
-                        try:
-                            _local_rhos, _delta_theta, _imp, _ = compute_innovation(sampling, silent_mode=True)
-                            del(sampling)
-                            gc.collect()
-                           
-                            if rho_n is None:
-                                rho_n       = _local_rhos
-                                delta_theta = _delta_theta
-                                Imp         = _imp.mean(axis=1)
-                            else:
-                                rho_n       = np.append( rho_n,  _local_rhos )
-                                delta_theta = np.append( delta_theta,  _delta_theta )
-                                Imp         = np.append( Imp,  _imp.mean(axis=1))
-                        except Exception as e:
-                            print("An error occurred: ",e)
-                            continue
-        elif ext == '.hdf5':
+    def compute_everything(file_list):
+        rho_n        = None
+        delta_theta  = None
+        Imp          = None
 
-               print("Reading HDF5 file ", file)
-               with h5py.File(file,'r') as data:
-                   for local_case in tqdm( data.keys(), desc = "Computing Decoding Improvement: "):
-                        sampling = { local_case : data[local_case][:]}
-                        try:
-                            _local_rhos, _delta_theta, _imp, _ = compute_innovation(sampling, silent_mode=True)
-                            del(sampling)
-                            gc.collect()
-                           
-                            if rho_n is None:
-                                rho_n       = _local_rhos
-                                delta_theta = _delta_theta
-                                Imp         = _imp.mean(axis=1)
-                            else:
-                                rho_n       = np.append( rho_n,  _local_rhos )
-                                delta_theta = np.append( delta_theta,  _delta_theta )
-                                Imp         = np.append( Imp,  _imp.mean(axis=1))
-                        except Exception as e:
-                            print("An error occurred: ",e)
-                            continue
+        for file in file_list:
+        
+            ext = file.replace('//','/').split('.')[-1]
+            if ext == 'npz':
+                    print("Reading NPZ file ", file)
+                    data = np.load(file, mmap_mode="r")
+                    all_cases = data.files
+                   
+            elif ext == 'hdf5':
+                    print("Reading HDF5 file ", file)
+                    data = h5py.File(file,'r')
+                    all_cases = data.keys()
+            else:
+                    raise FileExistsError(f"Wrong file format for {file}")
+    
+            for local_case in tqdm( all_cases, desc = "Computing Decoding Improvement: "):
+                    sampling = { local_case : data[local_case]} if ext == 'npz' else { local_case : data[local_case][:]}
+                    if rho_n is None:
+                        rho_n, delta_theta, Imp, _ = compute_innovation(sampling, silent_mode=True)
+                        Imp = Imp.mean(axis=1)
+                    else:
+                       _local_rhos, _delta_theta, _imp, _ = compute_innovation(sampling, silent_mode=True)
+                       rho_n       = np.append( rho_n,  _local_rhos )
+                       delta_theta = np.append( delta_theta,  _delta_theta )
+                       Imp         = np.append( Imp,  _imp.mean(axis=1))
+                        
+                    del(sampling)
+                    gc.collect()
+                    # except Exception as e:
+                          # print("An error occurred: ",e)
+                          # raise ValueError(e)
+            del(data)
 
-            
+        return  _local_rhos, _delta_theta, _imp
+
+
+    if n_workers == 1:           
+        rho_n, delta_theta, Imp  = compute_everything(file_list)
+    else:
+        from multiprocess import Pool
+        
+        n_batches = len(file_list)//n_workers
+        trunc     = len(file_list)%n_workers
+        parts = [ tuple( [ file_list[i:i + n_batches] ]) for i in range(0, n_workers * n_batches, n_batches)]
+        if trunc:  parts.append(  tuple( [  file_list[-trunc:]] ) )
+    
+        pool = Pool(n_workers)
+        for i, results in enumerate(pool.starmap( compute_everything, parts )  ):
+            if i==0:
+                rho_n, delta_theta, Imp = results
+            else:
+                _local_rhos, _delta_theta, _imp = results
+                rho_n       = np.append( rho_n,  _local_rhos )
+                delta_theta = np.append( delta_theta,  _delta_theta )
+                Imp         = np.append( Imp,  _imp)               
+        del(pool)
+        # <- End of pool
+       
+    # Compute conversion table for each shift            
     rhos_table = {}
     for dt in np.unique(delta_theta):
         config = {  
@@ -337,7 +350,7 @@ def read_landscape_simulation( file_list, batch_size = 100):
         mus = np.array([ list(map(system.mu[0],THETA)), list(map(system.mu[1], THETA))])
         rhos_table[dt] = np.corrcoef(mus,rowvar=True)[1,0]
     
-    # Compute Signal Correlations
+    # Compute Signal Correlations with conversion table
     rho_s = np.array( [ rhos_table[dt] for dt in  delta_theta ])
     
     return rho_s, delta_theta, rho_n, Imp
