@@ -16,9 +16,8 @@ if __name__ == '__main__':
 
     file_list = glob(wrkdir+'/landscape/*.npz')
     file_list += glob(wrkdir+'/*.hdf5')    
-    file_list = file_list[:5]
     
-    rho_s, delta_theta, rho_n, Imp = read_landscape_simulation( file_list, n_workers = 2)
+    rho_s, delta_theta, rho_n, Imp = read_landscape_simulation( file_list, n_workers = 10)
     
     plot_landscape(rho_s, rho_n, Imp ,
                    dx=0.08, dy = 0.05,

@@ -84,10 +84,10 @@ def bayesian_decoder(r, mu, inv_sigma, det, theta_support):
     # cos *= norm_factor
 
     # Integrate via Simpson's rule
-    # sin = scipy.integrate.simpson(P_post_sin, x = theta_support)
-    # cos = scipy.integrate.simpson(P_post_cos, x = theta_support)
-    sin = P_post_sin.mean(axis=1)
-    cos = P_post_cos.mean(axis=1)
+    sin = scipy.integrate.simpson(P_post_sin, x = theta_support)
+    cos = scipy.integrate.simpson(P_post_cos, x = theta_support)
+    # sin = P_post_sin.mean(axis=1)
+    # cos = P_post_cos.mean(axis=1)
     
     # Integrate via Quadrate Method
     # sin,_ = scipy.integrate.quad(P_post_sin, 0, 2*np.pi)

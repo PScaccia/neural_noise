@@ -12,6 +12,7 @@ from   pathlib import Path
 import copy, re
 import gc
 import h5py
+from   datetime import datetime
 
 def natural_key(s):
     # divide in sequenze di numeri e non numeri
@@ -149,7 +150,7 @@ def save_to_netcdf(filename, data_dict):
                 var[slc] = arr
 
 
-def save_results_hdf5(data_dict, filename):
+def save_results_hdf5(data_dict, filename, beta = None, version = 999):
     """
     Salva o appende i risultati di una simulazione in un file HDF5.
 
@@ -167,6 +168,12 @@ def save_results_hdf5(data_dict, filename):
     mode = 'a' if os.path.exists(filename) else 'w'
 
     with h5py.File(filename, mode) as f:
+        
+        if beta is not None: f.attrs['beta'] = beta
+        f.attrs['edit_date'] = datetime.now().isoformat()
+        f.attrs['version']   = version
+        if mode == 'w':  f.attrs['craetion_date'] = datetime.now().isoformat()
+
         for key, arr in data_dict.items():
             arr = np.asarray(arr)
 
@@ -175,8 +182,8 @@ def save_results_hdf5(data_dict, filename):
                 maxshape = list(arr.shape)
                 maxshape[-1] = None  # ultimo asse estensibile
                 f.create_dataset(
-                    key, data=arr, maxshape=tuple(maxshape), compression="gzip"
-                )
+                                    key, data=arr, maxshape=tuple(maxshape), compression="gzip"
+                                )
             else:
                 dset = f[key]
                 # Controllo di compatibilità delle dimensioni (tutti tranne ultimo asse)

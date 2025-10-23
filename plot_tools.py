@@ -1069,7 +1069,6 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
             #     ax.scatter(x,y , color=cmap(norm(y)))
 
         plt.xlabel("Noise Correlation", size = 18)
-        plt.ylabel("Improvement in Percent Correct [%]", size = 18)
         plt.axhline(0,c='black',zorder = 12, lw=0.5)
         plt.axvline(0,c='black',zorder = 12, lw=0.5)
         plt.xlim(0,None)
@@ -1109,8 +1108,11 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
         system2.alpha = 0.0
         system2.generate_variance_matrix()
 
-        plot_simulation_single_panel(system, [],plot_ticks=False)
-        draw_comparison(system, system2,plt.gca(),np.pi)
+        plot_simulation_single_panel(system, [],plot_ticks=False, manifold_width=6)
+
+        for t in [np.pi, np.pi-1, np.pi+1, np.pi - 2, np.pi + 2]:
+            draw_comparison(system, system2,plt.gca(),t, lw = 6)
+        
         OUTFIG = f"{OUTDIR}/figure1_panelD_1.pdf"
         plt.savefig( OUTFIG, dpi = 300, bbox_inches = 'tight')
         print("Saved plot ", OUTFIG)
@@ -1132,8 +1134,9 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
         system2.alpha = 0.0
         system2.generate_variance_matrix()
         
-        plot_simulation_single_panel(system, [],plot_ticks=False)
-        draw_comparison(system, system2,plt.gca(),np.pi)
+        plot_simulation_single_panel(system, [],plot_ticks=False, manifold_width=6)
+        for t in [np.pi, np.pi-0.5, np.pi+0.5, np.pi-1, np.pi+1]:
+            draw_comparison(system, system2,plt.gca(),t,lw = 6)
         OUTFIG = f"{OUTDIR}/figure1_panelD_2.pdf"
         plt.savefig( OUTFIG, dpi = 300, bbox_inches = 'tight')
         print("Saved plot ", OUTFIG)
@@ -1145,8 +1148,8 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
         plt.xlabel("Stimulus [°]", size = 30)
         plt.ylabel("Response", size = 30)
         ax.set_yticklabels([])
-        plt.xticks([0,90,180,270,360],size = 20,width=2)
-        ax.set_xticklabels( ["0°","90°","180°","270°","360°"] )
+        plt.xticks([0,90,180,270,360],size = 20)
+        ax.set_xticklabels( ["0°","90°","180°","270°","360°"])
         plt.xlim(0,360)
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
@@ -1306,7 +1309,7 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
             sm = cm.ScalarMappable(cmap=cmap, norm=norm)
             sm.set_array([])
             ax.plot(xline,y_smooth)
-        
+            
         plt.xlabel("Noise Correlation", size = 18)
         plt.ylabel("Improvement in RMSE [%]", size = 18)
         plt.axhline(0,lw=1,c='black')

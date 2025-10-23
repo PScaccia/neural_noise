@@ -269,31 +269,37 @@ def read_landscape_simulation( file_list, batch_size = 100, n_workers = 1):
         delta_theta  = None
         Imp          = None
 
-        for file in file_list:
+        for file in tqdm(  file_list , desc = "Computing Decoding Improvement:"):
         
             ext = file.replace('//','/').split('.')[-1]
-            if ext == 'npz':
-                    print("Reading NPZ file ", file)
-                    data = np.load(file, mmap_mode="r")
-                    all_cases = data.files
-                   
-            elif ext == 'hdf5':
-                    print("Reading HDF5 file ", file)
-                    data = h5py.File(file,'r')
-                    all_cases = data.keys()
-            else:
-                    raise FileExistsError(f"Wrong file format for {file}")
+            try:
+                if ext == 'npz':
+                        print("Reading NPZ file ", file)
+                        data = np.load(file, mmap_mode="r")
+                        all_cases = data.files
+                       
+                elif ext == 'hdf5':
+                        print("Reading HDF5 file ", file)
+                        data = h5py.File(file,'r')
+                        all_cases = data.keys()
+                else:
+                        print(f"Wrong file format for {file}")
+                        continue
+            except Exception as e:
+                print("Error with ", file)
+                print(e)
+                continue
     
-            for local_case in tqdm( all_cases, desc = "Computing Decoding Improvement: "):
+            for local_case in all_cases:
                     sampling = { local_case : data[local_case]} if ext == 'npz' else { local_case : data[local_case][:]}
                     if rho_n is None:
                         rho_n, delta_theta, Imp, _ = compute_innovation(sampling, silent_mode=True)
                         Imp = Imp.mean(axis=1)
                     else:
-                       _local_rhos, _delta_theta, _imp, _ = compute_innovation(sampling, silent_mode=True)
-                       rho_n       = np.append( rho_n,  _local_rhos )
-                       delta_theta = np.append( delta_theta,  _delta_theta )
-                       Imp         = np.append( Imp,  _imp.mean(axis=1))
+                        _local_rhon, _delta_theta, _imp, _ = compute_innovation(sampling, silent_mode=True)
+                        rho_n       = np.append( rho_n,        _local_rhon )
+                        delta_theta = np.append( delta_theta,  _delta_theta )
+                        Imp         = np.append( Imp,          _imp.mean(axis=1))
                         
                     del(sampling)
                     gc.collect()
@@ -301,9 +307,8 @@ def read_landscape_simulation( file_list, batch_size = 100, n_workers = 1):
                           # print("An error occurred: ",e)
                           # raise ValueError(e)
             del(data)
-
-        return  _local_rhos, _delta_theta, _imp
-
+            
+        return rho_n, delta_theta, Imp
 
     if n_workers == 1:           
         rho_n, delta_theta, Imp  = compute_everything(file_list)
