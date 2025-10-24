@@ -5,44 +5,18 @@ Created on Mon Oct 20 11:34:56 2025
 
 @author: paolos
 """
-from   utils.io_tools import save_results_hdf5
+from   utils.io_tools   import save_results_hdf5
+from   utils.stat_tools import compute_RMSE
 from   network import NeuralSystem, THETA
-import numpy as np
 import scipy
 import copy, os, sys
 from   multiprocess import Pool
 import h5py
 from   tqdm import tqdm
-    
-def bayesian_decoder(r, mu, inv_sigma, log_det, sin_theta, cos_theta, theta_support):
-    """
-    r:  (Nx,Ny,N_trials,2)
-    mu: (Nx,N_theta_int, 2)
-    
-    """
-    
-    dr = r[:,:,:,None,:] - mu[None,:,None,:] # Check
-        
-    cost_function = np.einsum("ijkab,ijhka,ijhkb->ijkh",inv_sigma, dr,dr) + log_det[:,:,:,None]
+import numpy as np
+from   config.landscape import config
 
-    # Compute posterior    
-    P_post           = np.exp(-0.5*cost_function)
-
-    # Define Integrand Functions
-    P_post_sin = P_post*sin_theta[None,None,:,None]
-    P_post_cos = P_post*cos_theta[None,None,:,None]
-    
-    # Integrate cartesian components
-    # sin = scipy.integrate.simpson(P_post_sin, x = theta_support)
-    # cos = scipy.integrate.simpson(P_post_cos, x = theta_support)
-    sin = P_post_sin.sum(axis=2)
-    cos = P_post_cos.sum(axis=2)
-    
-    # Compute stimulus extimate
-    extimate = np.arctan2(sin, cos)
-
-    return np.mod( extimate , 2*np.pi )
-
+__version__ = 1.0
 
 def compute_chunk_optimized(args):
     """Optimized worker that caches tuning curves per dtheta"""
@@ -59,7 +33,7 @@ def compute_chunk_optimized(args):
     
     for ix, iy in chunk_indices:
         dtheta = config['center_shift'][ix]
-        alpha = config['alpha'][iy]
+        alpha  = config['alpha'][iy]
         
         # Compute tuning curve only once per ix
         if ix not in tuning_curve_cache:
@@ -68,12 +42,12 @@ def compute_chunk_optimized(args):
             local_config['alpha'] = 0.0
             system = NeuralSystem(local_config, N_trial=local_config['N'])
             
-            mu_1 = np.vectorize(system.mu[0])
-            mu_2 = np.vectorize(system.mu[1])
+            mu_1, mu_2 = np.vectorize(system.mu[0]), np.vectorize(system.mu[1])
             tuning_curve = np.array([mu_1(theta_support), mu_2(theta_support)])
             tuning_curve_cache[ix] = (system, tuning_curve)
-        
-        system, tuning_curve = tuning_curve_cache[ix]
+            ind_sigma   = np.array(list(map(system.sigma, theta_support)))      
+            ind_inv_cov = np.array(list(map(inv_f, ind_sigma)))
+            ind_log_det = np.array(list(map(log_d_f, ind_sigma)))
         
         # Update alpha and compute variance-dependent quantities
         system.alpha = alpha
@@ -83,7 +57,9 @@ def compute_chunk_optimized(args):
         inv_cov = np.array(list(map(inv_f, sigma)))
         log_det = np.array(list(map(log_d_f, sigma)))
         
-        results.append((ix, iy, tuning_curve, sigma, inv_cov, log_det))
+        results.append((ix, iy, tuning_curve,
+                        ind_sigma, ind_inv_cov, ind_log_det,
+                        sigma,     inv_cov,     log_det))
     
     return results
 
@@ -121,7 +97,10 @@ def compute_signal_quantities_parallel(N_theta_int, n_processes=None, chunk_size
     cov_matrices        = np.zeros((N_rho_s, N_rho_n, N_theta_int, 2, 2))
     inv_cov_matrices    = np.zeros((N_rho_s, N_rho_n, N_theta_int, 2, 2))
     log_det_matrix      = np.zeros((N_rho_s, N_rho_n, N_theta_int))
-    
+    ind_cov_matrices        = np.zeros((N_rho_s, N_theta_int, 2, 2))
+    ind_inv_cov_matrices    = np.zeros((N_rho_s, N_theta_int, 2, 2))
+    ind_log_det_matrix      = np.zeros((N_rho_s, N_theta_int))
+
     # Parallel processing
     with Pool(processes=n_processes) as pool:
         chunk_results = pool.map(compute_chunk_optimized, args_list)
@@ -129,16 +108,19 @@ def compute_signal_quantities_parallel(N_theta_int, n_processes=None, chunk_size
     # Collect results
     all_results = [item for chunk in chunk_results for item in chunk]
     
-    for ix, iy, tuning_curve, cov, inv_cov, log_det in all_results:
+    for ix, iy, tuning_curve, ind_cov, ind_inv_cov, ind_log_det, cov, inv_cov, log_det in all_results:
         tuning_curve_matrix[ix, :, :]     = tuning_curve
+        ind_cov_matrices[ix, :, :, :]     = ind_cov
+        ind_inv_cov_matrices[ix, :, :, :] = ind_inv_cov
+        ind_log_det_matrix[ix, :]         = ind_log_det
         cov_matrices[ix, iy, :, :, :]     = cov
         inv_cov_matrices[ix, iy, :, :, :] = inv_cov
         log_det_matrix[ix, iy, :]         = log_det
-    
+
     # Flip last two axis of the tuning curve matrix ( new_size = [Nx,N_theta,2] )
     tuning_curve_matrix = np.moveaxis(tuning_curve_matrix, 1, -1)
 
-    return tuning_curve_matrix, cov_matrices, inv_cov_matrices, log_det_matrix
+    return tuning_curve_matrix, ind_cov_matrices, ind_inv_cov_matrices, ind_log_det_matrix, cov_matrices, inv_cov_matrices, log_det_matrix
 
 
 def generate_responses(mu, sigma, n_trials, n_theta_subsample, n_processes=None):
@@ -238,71 +220,119 @@ def generate_responses_memory_efficient(mu, sigma, n_trials, n_theta_subsample, 
     return responses
 
 
+def compute_bayesan_extimate(r, mu, inv_sigma, log_det):
+          
+    theta_ext     = np.zeros( r.shape[:-1] )
+    theta_support = np.linspace(0,2*np.pi,mu.shape[-2])
+    sin_theta     = np.sin(theta_support)
+    cos_theta     = np.cos(theta_support)
+    n_stimuli     = r.shape[2]
+    print(r.shape, mu.shape)
+    """
+    args_list = [ (r[:,:,t,:,:], mu, inv_sigma, log_det_sigma, sin_theta, cos_theta, theta_support) for t in range(n_stimuli) ]
 
-def compute_bayesan_extimate(responses, mu, inv_sigma, log_det):
+    # Parallel processing
+    with Pool(processes=Pool()._processes) as pool:
+        results = pool.map(bayesian_decoder, args_list)
+        for t, result in enumerate(tqdm(  results, desc = 'Computing Theta ext') ):
+            theta_ext[:,:,t,:] = result
+    """
+    for t in tqdm(range(n_stimuli),desc='Decoding responses: '):
+            theta_ext[:,:,t,:] = bayesian_decoder((r[:,:,t,:,:], mu, inv_sigma, log_det, sin_theta, cos_theta, theta_support))
         
-    # Set thread count at the start of your script
-    def configure_numpy_threads(n_threads=8):
-        """Configure NumPy to use multiple threads"""
-        os.environ['OMP_NUM_THREADS'] = str(n_threads)
-        os.environ['OPENBLAS_NUM_THREADS'] = str(n_threads)
-        os.environ['MKL_NUM_THREADS'] = str(n_threads)
-        os.environ['VECLIB_MAXIMUM_THREADS'] = str(n_threads)
-        os.environ['NUMEXPR_NUM_THREADS'] = str(n_threads)
-        
-        print(f"Configured NumPy to use {n_threads} threads")
-    
-    configure_numpy_threads(8)
-    import numpy as np
-    
-    theta_ext = np.zeros( responses.shape[:-1] )
-    theta_support = np.linspace(0,2*np.pi,mu.shape[-1])
-    sin_theta = np.sin(theta_support)
-    cos_theta = np.cos(theta_support)
-    
-    for t in tqdm( range(36), desc = 'Computing Theta ext'):
-        theta_ext[:,:,t,:] = bayesian_decoder( responses[:,:,t,:,:], mu, inv_sigma, log_det_sigma, sin_theta, cos_theta, theta_support)
-            
     return theta_ext
+
+def bayesian_decoder(args):
+    """
+    r:  (Nx,Ny,N_trials,2)
+    mu: (Nx,N_theta_int, 2)
+    
+    """
+    r, mu, inv_sigma, log_det, sin_theta, cos_theta, theta_support = args
+
+    dr = r[:,:,:,None,:] - mu[None,:,None,:,:] 
+    # cost_function = np.einsum("ijkab,ijhka,ijhkb->ijkh",inv_sigma, dr,dr) + log_det[:,:,:,None]
+    cost_function = np.einsum("abdij,abcdi,abcdj->abcd",inv_sigma, dr,dr) + log_det[:,:,None,:]
+
+    # Compute posterior    
+    P_post           = np.exp(-0.5*cost_function)
+
+    # Define Integrand Functions
+    P_post_sin = P_post*sin_theta[None,None,None,:]
+    P_post_cos = P_post*cos_theta[None,None,None,:]
+    
+    # Integrate cartesian components
+    # sin = scipy.integrate.simpson(P_post_sin, x = theta_support)
+    # cos = scipy.integrate.simpson(P_post_cos, x = theta_support)
+    sin = P_post_sin.sum(axis=-1)
+    cos = P_post_cos.sum(axis=-1)
+    
+    # Compute stimulus extimate
+    extimate = np.arctan2(sin, cos)
+
+    return np.mod( extimate , 2*np.pi )
 
 if __name__ == '__main__':
     
     N_theta_int       = 360
     N_theta_subsample = 10
     N_trial           = 100
+    beta              = config['beta']
+    version           = 1
     
-    signal_dependency_file = "/home/paolos/data/simulations/signal_dependences_beta_1.hdf5"
-    response_file          = "/home/paolos/data/simulations/responses_beta_1.hdf5"
-    results_file           = "/home/paolos/data/simulations/bayesian_decoding_beta_1.hdf5"
+    signal_dependency_file = "/home/paolos/data/simulations/signal_dependences.hdf5"
+    response_file          = "/home/paolos/data/simulations/responses.hdf5"
+    results_file           = "/home/paolos/data/simulations/bayesian_decoding.hdf5"
+    performance_file       = "/home/paolos/data/simulations/performance.hdf5"
     
     """Compute Signal Manifolds and Cov. Matrices"""    
     if not os.path.isfile(signal_dependency_file):
         # Compute and save Tuning Curves, Inverse Covariance Matrices and determinants
-        print("Computing Signal Quantities...")
-        mu, sigma, inv_sigma, log_det_sigma = compute_signal_quantities_parallel(N_theta_int)    
-        results = {'mu'        : mu,
-                   'sigma'     : sigma,
-                   'inv_sigma' : inv_sigma,
-                   'log_det_sigma' : log_det_sigma }
-        save_results_hdf5(results, signal_dependency_file)
+        print("Computing Signal Quantities")
+        mu, ind_sigma, ind_inv_sigma, ind_log_det_sigma,\
+        sigma, inv_sigma, log_det_sigma = compute_signal_quantities_parallel(N_theta_int)    
+        results = {'mu'                : mu,
+                   'ind_sigma'         : ind_sigma,
+                   'ind_inv_sigma'     : ind_inv_sigma,
+                   'ind_log_det_sigma' : ind_log_det_sigma ,
+                   'sigma'             : sigma,
+                   'inv_sigma'         : inv_sigma,
+                   'log_det_sigma'     : log_det_sigma }
+        save_results_hdf5(results, signal_dependency_file, beta = beta , version = __version__)
     else:
         # Read Input file with Tuning Curves, Inverse Covariance Matrices and determinants
-        print("Reading file", signal_dependency_file,'...')
+        print("Reading file", signal_dependency_file)
         with h5py.File(signal_dependency_file,'r') as input_file:
-            mu, sigma, inv_sigma, log_det_sigma = input_file['mu'][:], input_file['sigma'][:], input_file['inv_sigma'][:], input_file['log_det_sigma'][:]
+            mu, sigma, inv_sigma, log_det_sigma         = input_file['mu'][:], input_file['sigma'][:], input_file['inv_sigma'][:], input_file['log_det_sigma'][:]
+            ind_sigma, ind_inv_sigma, ind_log_det_sigma = input_file['ind_sigma'][:], input_file['ind_inv_sigma'][:], input_file['ind_log_det_sigma'][:]
 
     """Generate Neural Responses"""
     if not os.path.isfile(response_file):
-        print("Generating Responses...")        
-        responses = generate_responses_memory_efficient(mu, sigma, N_trial , N_theta_subsample)    
-        save_results_hdf5({'responses' : responses}, response_file)                
+        print("Generating Responses")        
+        responses     = generate_responses_memory_efficient(mu, sigma, N_trial , N_theta_subsample)    
+        ind_responses = generate_responses_memory_efficient(mu, ind_sigma[None,:,:,:,:], N_trial , N_theta_subsample)
+        save_results_hdf5({'responses' : responses, 'ind_responses' : ind_responses}, response_file, beta = beta , version = __version__)
     else:
-        print("Reading Response File {}...".format(response_file) )
+        print("Reading Response File {}".format(response_file) )
         with h5py.File(response_file,'r') as input_file:
-            responses = input_file['responses'][:]
-    del(sigma) # Free memory
+            responses, ind_responses = input_file['responses'][:], input_file['ind_responses'][:]
+    del(sigma, ind_sigma) # Free memory
     
-    """Compute Bayesian Extimates"""    
-    theta_ext = compute_bayesan_extimate(responses, mu, inv_sigma, log_det_sigma)
-    save_results_hdf5(theta_ext, results_file)
+    """Compute Bayesian Extimates"""
+    if not os.path.isfile(results_file):
+        theta_ext     = compute_bayesan_extimate(responses[:,:,:2,...], mu, inv_sigma, log_det_sigma)
+        ind_theta_ext = compute_bayesan_extimate(ind_responses[:,:,:2,...], mu, ind_inv_sigma[None,...], ind_log_det_sigma[None,...])    
+        save_results_hdf5( {'theta_extimate'     : theta_ext,
+                            'ind_theta_extimate' : ind_theta_ext }, results_file, beta = beta , version = __version__)
+    else:
+        print("Reading Decoding Extimates {}".format(results_file) )
+        with h5py.File(results_file,'r') as input_file:
+            theta_ext, ind_theta_ext = input_file['theta_extimate'][:], input_file['ind_theta_extimate'][:]
+    del(responses, ind_responses)
+    
+    """Compute Decoding Error"""    
+    RMSE = compute_RMSE(theta_ext, np.linspace(0,2*np.pi, theta_ext.shape[-1])[:2] )
+    ind_RMSE = compute_RMSE(ind_theta_ext, np.linspace(0,2*np.pi, ind_theta_ext.shape[-1])[:2] )
+    save_results_hdf5( {'RMSE'     : RMSE,
+                        'ind_RMSE' : ind_RMSE }, performance_file, beta = beta , version = __version__)
     

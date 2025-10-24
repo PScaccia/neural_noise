@@ -1918,3 +1918,9 @@ def plot_landscape(rho_s , rho_n, imp,
     print("Saved plot ",OUTFIG)
 
     return 
+
+
+def plot_improvement_landscape(hdf5_file):
+    from config.landscape import config
+    
+    return

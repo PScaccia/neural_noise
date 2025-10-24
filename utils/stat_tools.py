@@ -102,6 +102,12 @@ def compute_MSE(theta_sampling, theta, mode = 'mse', errors = False):
         else:
             return MSE, None
 
+def compute_RMSE(theta_sampling, theta):
+    from scipy.stats import circmean, circstd
+    diff = theta[None, None,:,None] - theta_sampling
+    MSE = circmean( np.arctan2( np.sin(diff), np.cos(diff))**2, axis = -1 )
+    return np.sqrt(MSE)
+
 def compute_innovation(results, errors = False, silent_mode = False):
     from network import THETA
     from decoder import circular_moving_average
