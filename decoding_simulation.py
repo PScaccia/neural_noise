@@ -227,7 +227,7 @@ def compute_bayesan_extimate(r, mu, inv_sigma, log_det):
     sin_theta     = np.sin(theta_support)
     cos_theta     = np.cos(theta_support)
     n_stimuli     = r.shape[2]
-    print(r.shape, mu.shape)
+
     """
     args_list = [ (r[:,:,t,:,:], mu, inv_sigma, log_det_sigma, sin_theta, cos_theta, theta_support) for t in range(n_stimuli) ]
 
@@ -274,11 +274,10 @@ def bayesian_decoder(args):
 
 if __name__ == '__main__':
     
-    N_theta_int       = 360
-    N_theta_subsample = 10
-    N_trial           = 100
+    N_theta_int       = 180
+    N_theta_subsample = 5
+    N_trial           = config['N']
     beta              = config['beta']
-    version           = 1
     
     signal_dependency_file = "/home/paolos/data/simulations/signal_dependences.hdf5"
     response_file          = "/home/paolos/data/simulations/responses.hdf5"
@@ -320,8 +319,8 @@ if __name__ == '__main__':
     
     """Compute Bayesian Extimates"""
     if not os.path.isfile(results_file):
-        theta_ext     = compute_bayesan_extimate(responses[:,:,:2,...], mu, inv_sigma, log_det_sigma)
-        ind_theta_ext = compute_bayesan_extimate(ind_responses[:,:,:2,...], mu, ind_inv_sigma[None,...], ind_log_det_sigma[None,...])    
+        theta_ext     = compute_bayesan_extimate(responses, mu, inv_sigma, log_det_sigma)
+        ind_theta_ext = compute_bayesan_extimate(ind_responses, mu, ind_inv_sigma[None,...], ind_log_det_sigma[None,...])    
         save_results_hdf5( {'theta_extimate'     : theta_ext,
                             'ind_theta_extimate' : ind_theta_ext }, results_file, beta = beta , version = __version__)
     else:
@@ -331,8 +330,8 @@ if __name__ == '__main__':
     del(responses, ind_responses)
     
     """Compute Decoding Error"""    
-    RMSE = compute_RMSE(theta_ext, np.linspace(0,2*np.pi, theta_ext.shape[-1])[:2] )
-    ind_RMSE = compute_RMSE(ind_theta_ext, np.linspace(0,2*np.pi, ind_theta_ext.shape[-1])[:2] )
+    RMSE = compute_RMSE(theta_ext, np.linspace(0,2*np.pi, theta_ext.shape[-1]) )
+    ind_RMSE = compute_RMSE(ind_theta_ext, np.linspace(0,2*np.pi, ind_theta_ext.shape[-1]) )
     save_results_hdf5( {'RMSE'     : RMSE,
                         'ind_RMSE' : ind_RMSE }, performance_file, beta = beta , version = __version__)
     
