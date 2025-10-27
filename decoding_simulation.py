@@ -220,13 +220,14 @@ def generate_responses_memory_efficient(mu, sigma, n_trials, n_theta_subsample, 
     return responses
 
 
-def compute_bayesan_extimate(r, mu, inv_sigma, log_det):
+def compute_bayesan_extimate(r, mu, inv_sigma, log_det, n_processes = None):
           
     theta_ext     = np.zeros( r.shape[:-1] )
     theta_support = np.linspace(0,2*np.pi,mu.shape[-2])
     sin_theta     = np.sin(theta_support)
     cos_theta     = np.cos(theta_support)
     n_stimuli     = r.shape[2]
+    n_trials = r.shape[3]
 
     """
     args_list = [ (r[:,:,t,:,:], mu, inv_sigma, log_det_sigma, sin_theta, cos_theta, theta_support) for t in range(n_stimuli) ]
@@ -237,9 +238,44 @@ def compute_bayesan_extimate(r, mu, inv_sigma, log_det):
         for t, result in enumerate(tqdm(  results, desc = 'Computing Theta ext') ):
             theta_ext[:,:,t,:] = result
     """
+    
+    # Determine batch size
+    if n_processes is None:
+        n_processes = Pool()._processes
+    
+    batch_size = max(1, n_trials // (n_processes))
+    
+    # Create batches
+    args_list = []
+    
     for t in tqdm(range(n_stimuli),desc='Decoding responses: '):
-            theta_ext[:,:,t,:] = bayesian_decoder((r[:,:,t,:,:], mu, inv_sigma, log_det, sin_theta, cos_theta, theta_support))
-        
+        for batch_id in range(0, n_trials, batch_size):
+            end_idx = min(batch_id + batch_size, n_trials)
+            trial_indices = list(range(batch_id, end_idx))
+            r_batch = r[:, :, t, batch_id:end_idx, :]   
+            args_list.append((
+                batch_id // batch_size,
+                trial_indices,
+                r_batch,
+                mu,
+                inv_sigma,
+                log_det,
+                sin_theta,
+                cos_theta,
+                theta_support
+            ))
+        with Pool(processes=n_processes) as pool:
+            for arg in args_list:
+                batch_results = list(tqdm(
+                    pool.imap(bayesian_decoder, args_list),
+                    total=len(args_list),
+                    desc='Decoding responses (batched)'
+                ))
+
+        for trial_index, trial_results in batch_results:
+              theta_ext[:, :, t, trial_index] = trial_results
+    
+    
     return theta_ext
 
 def bayesian_decoder(args):
@@ -248,9 +284,9 @@ def bayesian_decoder(args):
     mu: (Nx,N_theta_int, 2)
     
     """
-    r, mu, inv_sigma, log_det, sin_theta, cos_theta, theta_support = args
+    _, trial_indices, r, mu, inv_sigma, log_det, sin_theta, cos_theta, theta_support = args
+    dr = r[:,:,:,None,:] - mu[:,None,None,:,:] 
 
-    dr = r[:,:,:,None,:] - mu[None,:,None,:,:] 
     # cost_function = np.einsum("ijkab,ijhka,ijhkb->ijkh",inv_sigma, dr,dr) + log_det[:,:,:,None]
     cost_function = np.einsum("abdij,abcdi,abcdj->abcd",inv_sigma, dr,dr) + log_det[:,:,None,:]
 
@@ -260,17 +296,117 @@ def bayesian_decoder(args):
     # Define Integrand Functions
     P_post_sin = P_post*sin_theta[None,None,None,:]
     P_post_cos = P_post*cos_theta[None,None,None,:]
+    del(P_post, cost_function, dr)
+
+    # Integrate cartesian components
+    # sin = scipy.integrate.simpson(P_post_sin, x = theta_support)
+    # cos = scipy.integrate.simpson(P_post_cos, x = theta_support)
+    sin = P_post_sin.sum(axis=-1)
+    cos = P_post_cos.sum(axis=-1)
+    del(P_post_sin, P_post_cos)
+
+    # Compute stimulus extimate
+    extimate = np.arctan2(sin, cos)
+
+    return (trial_indices, np.mod( extimate , 2*np.pi ))
+
+ 
+def compute_bayesan_extimate_gpu(r, mu, inv_sigma, log_det, batch_size = 50):
+    import cupy as cp
+        
+    theta_ext     = np.zeros( r.shape[:-1] )
+    theta_support = cp.linspace(0,2*cp.pi,mu.shape[-2])
+    sin_theta     = cp.sin(theta_support)
+    cos_theta     = cp.cos(theta_support)
+    n_stimuli     = r.shape[2]
+    n_trials      = r.shape[3]
+
+    cp_mu        = cp.asarray(mu)
+    cp_inv_sigma = cp.asarray(inv_sigma)
+    cp_log_det   = cp.asarray(log_det)
+        
+    for t in tqdm(range(n_stimuli),desc='Decoding responses: '):
+        for batch_id in range(0, n_trials, batch_size):
+            end_idx = min(batch_id + batch_size, n_trials)
+            r_batch = r[:, :, t, batch_id:end_idx, :]   
+            theta_ext[:,:,t,batch_id:end_idx ] = cp.asnumpy( 
+                                                             cp_bayesian_decoder( cp.asarray(r_batch),
+                                                                                 cp_mu,
+                                                                                 cp_inv_sigma,
+                                                                                 cp_log_det,
+                                                                                 sin_theta,
+                                                                                 cos_theta,
+                                                                                 theta_support)  
+                                                             ) 
+            cp.get_default_memory_pool().free_all_blocks()
+            
+    # Create batches
+    # args_list = []
     
+    # for t in tqdm(range(n_stimuli),desc='Decoding responses: '):
+    #     for batch_id in range(0, n_trials, batch_size):
+    #         end_idx = min(batch_id + batch_size, n_trials)
+    #         trial_indices = list(range(batch_id, end_idx))
+    #         r_batch = r[:, :, t, batch_id:end_idx, :]   
+    #         args_list.append((
+    #             batch_id // batch_size,
+    #             trial_indices,
+    #             r_batch,
+    #             mu,
+    #             inv_sigma,
+    #             log_det,
+    #             sin_theta,
+    #             cos_theta,
+    #             theta_support
+    #         ))
+    #     with Pool(processes=n_processes) as pool:
+    #         for arg in args_list:
+    #             batch_results = list(tqdm(
+    #                 pool.imap(bayesian_decoder, args_list),
+    #                 total=len(args_list),
+    #                 desc='Decoding responses (batched)'
+    #             ))
+
+    #     for trial_index, trial_results in batch_results:
+    #           theta_ext[:, :, t, trial_index] = trial_results
+    
+    
+    return theta_ext
+
+def cp_bayesian_decoder(r, mu, inv_sigma, log_det, sin_theta, cos_theta, theta_support):
+    """
+    r:  (Nx,Ny,N_trials,2)
+    mu: (Nx,N_theta_int, 2)
+    
+    """
+    dr = r[:,:,:,None,:] - mu[:,None,None,:,:] 
+
+    # cost_function = np.einsum("ijkab,ijhka,ijhkb->ijkh",inv_sigma, dr,dr) + log_det[:,:,:,None]
+    cost_function = cp.einsum("abdij,abcdi,abcdj->abcd",inv_sigma, dr,dr) + log_det[:,:,None,:]
+    del(dr)
+    
+    # Compute posterior    
+    P_post           = cp.exp(-0.5*cost_function)
+    del(cost_function)
+    
+    # Define Integrand Functions
+    P_post_sin = P_post*sin_theta[None,None,None,:]
+    P_post_cos = P_post*cos_theta[None,None,None,:]
+    
+    del(P_post)
     # Integrate cartesian components
     # sin = scipy.integrate.simpson(P_post_sin, x = theta_support)
     # cos = scipy.integrate.simpson(P_post_cos, x = theta_support)
     sin = P_post_sin.sum(axis=-1)
     cos = P_post_cos.sum(axis=-1)
     
+    del(P_post_cos, P_post_sin)
+    
     # Compute stimulus extimate
-    extimate = np.arctan2(sin, cos)
+    extimate = cp.arctan2(sin, cos)
 
-    return np.mod( extimate , 2*np.pi )
+    return cp.mod( extimate , 2*cp.pi )
+
 
 if __name__ == '__main__':
     
@@ -278,11 +414,11 @@ if __name__ == '__main__':
     N_theta_subsample = 5
     N_trial           = config['N']
     beta              = config['beta']
-    
-    signal_dependency_file = "/home/paolos/data/simulations/signal_dependences.hdf5"
-    response_file          = "/home/paolos/data/simulations/responses.hdf5"
-    results_file           = "/home/paolos/data/simulations/bayesian_decoding.hdf5"
-    performance_file       = "/home/paolos/data/simulations/performance.hdf5"
+    n_processes       = 30
+    signal_dependency_file = "/home/paolo/data/signal_dependences.hdf5"
+    response_file          = "/home//paolo/data/responses.hdf5"
+    results_file           = "/home//paolo/data/bayesian_decoding.hdf5"
+    performance_file       = "/home//paolo/data/performance.hdf5"
     
     """Compute Signal Manifolds and Cov. Matrices"""    
     if not os.path.isfile(signal_dependency_file):
@@ -308,8 +444,8 @@ if __name__ == '__main__':
     """Generate Neural Responses"""
     if not os.path.isfile(response_file):
         print("Generating Responses")        
-        responses     = generate_responses_memory_efficient(mu, sigma, N_trial , N_theta_subsample)    
-        ind_responses = generate_responses_memory_efficient(mu, ind_sigma[None,:,:,:,:], N_trial , N_theta_subsample)
+        responses     = generate_responses_memory_efficient(mu, sigma, N_trial , N_theta_subsample, n_processes = n_processes) 
+        ind_responses = generate_responses_memory_efficient(mu, ind_sigma[:,None,:,:,:], N_trial , N_theta_subsample, n_processes = n_processes)
         save_results_hdf5({'responses' : responses, 'ind_responses' : ind_responses}, response_file, beta = beta , version = __version__)
     else:
         print("Reading Response File {}".format(response_file) )
@@ -319,8 +455,8 @@ if __name__ == '__main__':
     
     """Compute Bayesian Extimates"""
     if not os.path.isfile(results_file):
-        theta_ext     = compute_bayesan_extimate(responses, mu, inv_sigma, log_det_sigma)
-        ind_theta_ext = compute_bayesan_extimate(ind_responses, mu, ind_inv_sigma[None,...], ind_log_det_sigma[None,...])    
+        theta_ext     = compute_bayesan_extimate(responses, mu, inv_sigma, log_det_sigma, n_processes = 10)
+        ind_theta_ext = compute_bayesan_extimate(ind_responses, mu, ind_inv_sigma[None,...], ind_log_det_sigma[None,...], n_processes = 10)    
         save_results_hdf5( {'theta_extimate'     : theta_ext,
                             'ind_theta_extimate' : ind_theta_ext }, results_file, beta = beta , version = __version__)
     else:
