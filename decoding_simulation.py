@@ -287,7 +287,7 @@ def compute_bayesan_extimate_gpu(r, mu, inv_sigma, log_det, batch_size = 50):
     cp_inv_sigma = cp.asarray(inv_sigma)
     cp_log_det   = cp.asarray(log_det)
 
-    for t in tqdm(range(n_stimuli),desc='Decoding responses: '):
+    for t in tqdm(range(n_stimuli),desc='Decoding responses: ', unit = 'stimulus'):
         for batch_id in range(0, n_trials, batch_size):
             end_idx = min(batch_id + batch_size, n_trials)
             r_batch = r[:, :, t, batch_id:end_idx, :]   
@@ -342,19 +342,30 @@ def cp_bayesian_decoder(r, mu, inv_sigma, log_det, sin_theta, cos_theta, theta_s
 
     return cp.mod( extimate , 2*cp.pi )
 
+def parser():
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--n_proc',type=int,required=False, default=30,help="Number of workers")
+    parser.add_argument('--n_points_int',type=int,required=False, default = 180,help="Number of integration points for baysian extimate")
+    parser.add_argument('--n_subsample',type=int,required=False, default = 2,help="Number of input angles to be skipped for each point on the signal manifold")
+    parser.add_argument('--append_responses',action='store_true', default=False, help="Append responses to file (if it exists)")
+    
+    return parser.parse_args()
 
 if __name__ == '__main__':
     
-    N_theta_int       = 180
-    N_theta_subsample = 2
+    args = parser()
+    
+    N_theta_int       = args.n_points_int
+    N_theta_subsample = args.n_subsample
     N_trial           = config['N']
-    beta              = config['beta']
-    n_processes       = 30
+    n_processes       = args.n_proc
+    
     signal_dependency_file = "/home/paolo/data/signal_dependences_90points.hdf5"
     response_file          = "/home//paolo/data/responses_90points.hdf5"
     results_file           = "/home//paolo/data/bayesian_decoding_90points.hdf5"
     performance_file       = "/home//paolo/data/performance_90points.hdf5"
-    attrs = {'beta' : beta, 'n_stimuli' : int(N_theta_int/N_theta_subsample) }
+    attrs = {'beta' : config['beta'], 'n_stimuli' : int(N_theta_int/N_theta_subsample) }
     
     """Compute Signal Manifolds and Cov. Matrices"""    
     if not os.path.isfile(signal_dependency_file):
@@ -380,7 +391,7 @@ if __name__ == '__main__':
             ind_sigma, ind_inv_sigma, ind_log_det_sigma = input_file['ind_sigma'][:], input_file['ind_inv_sigma'][:], input_file['ind_log_det_sigma'][:]
 
     """Generate Neural Responses"""
-    if not os.path.isfile(response_file):
+    if not os.path.isfile(response_file) or args.append_responses:
         print("Generating Responses")        
         responses     = generate_responses_memory_efficient(mu, sigma, N_trial , N_theta_subsample, n_processes = n_processes) 
         ind_responses = generate_responses_memory_efficient(mu, ind_sigma[:,None,:,:,:], N_trial , N_theta_subsample, n_processes = n_processes)
@@ -399,6 +410,7 @@ if __name__ == '__main__':
     if not os.path.isfile(results_file):
         theta_ext     = compute_bayesan_extimate_gpu(responses, mu, inv_sigma, log_det_sigma)
         ind_theta_ext = compute_bayesan_extimate_gpu(ind_responses, mu, ind_inv_sigma[:,None,...], ind_log_det_sigma[:,None,...])    
+        print('Saving results...')
         save_results_hdf5( {'theta_extimate'     : theta_ext,
                             'ind_theta_extimate' : ind_theta_ext,
                             'tuning_shift'       : config['center_shift'],
