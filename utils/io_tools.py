@@ -94,7 +94,7 @@ def remove_case_from_results(file, a = None, b = None):
 
 
 
-def save_results_hdf5(data_dict, filename, attrs = None, version = 999):
+def save_results_hdf5(data_dict, filename, attrs = None, version = 999, silent_mode = False):
     """
     Salva o appende i risultati di una simulazione in un file HDF5.
 
@@ -126,23 +126,27 @@ def save_results_hdf5(data_dict, filename, attrs = None, version = 999):
             if key not in f:
                 # Crea un dataset nuovo, abilitando la possibilità di append
                 maxshape = list(arr.shape)
-                maxshape[-1] = None  # ultimo asse estensibile
+                if 'response' in key or 'theta_ext' in key:  maxshape[-2] = None  # penultimo asse estensibile
                 f.create_dataset(
                                     key, data=arr, maxshape=tuple(maxshape), compression="gzip"
                                 )
             else:
+                
+                if 'response' not in key and 'theta_ext' not in key:  continue  # penultimo asse estensibile
+
                 dset = f[key]
                 # Controllo di compatibilità delle dimensioni (tutti tranne ultimo asse)
                 
-                if dset.shape[:-1] != arr.shape[:-1]:
+                if dset.shape[:-2] != arr.shape[:-2]:
                     raise ValueError(
                         f"Shape incompatibile per append: {key}: {dset.shape} vs {arr.shape}"
                     )
 
                 # Estendi dataset sull’ultimo asse
-                new_size = dset.shape[-1] + arr.shape[-1]
-                dset.resize(new_size, axis=len(dset.shape)-1)
-                dset[..., -arr.shape[-1]:] = arr
+                new_size = dset.shape[-2] + arr.shape[-2]
+                dset.resize(new_size, axis=len(dset.shape)-2)
+                dset[..., -arr.shape[-2]:,:] = arr
 
-    print(f"Created file {filename}" if mode == 'w' else f"Updated file {filename}")
+    if not silent_mode: 
+        print(f"Created file {filename}" if mode == 'w' else f"Updated file {filename}")
     return
