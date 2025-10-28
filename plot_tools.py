@@ -1920,7 +1920,56 @@ def plot_landscape(rho_s , rho_n, imp,
     return 
 
 
-def plot_improvement_landscape(hdf5_file):
-    from config.landscape import config
+def plot_improvement_landscape(hdf5_file, interp = 'none',
+                               dx = 0.04, dy = 0.04, 
+                               xmin = -0.8, xmax = 1, 
+                               ymin = -0.5, ymax = 0.5,
+                               vmin = -1, vmax = 1):
+    from utils.stat_tools import compute_signal_corr_from_shift
+    import h5py
+    
+    with h5py.File(hdf5_file, 'r') as handle:
+        rho_n = handle['noise_correlation'][:]
+        rho_s = compute_signal_corr_from_shift(handle['tuning_shift'][:], 'poisson')
+        I = ( 1 - handle['RMSE'][:]/handle['ind_RMSE'][:])*100    
+        I = I.mean(axis=-1).transpose()
+        
+    x_unique = np.arange(-1,1,dx)
+    y_unique = np.arange(-1,1,dy)
+    X, Y = np.meshgrid(x_unique, y_unique)
+    Z = np.full_like(X, np.nan, dtype=float)
+    
+    plt.imshow(I,  extent=[rho_s.min(), rho_s.max(), rho_n.min(), rho_n.max()],
+               cmap ='coolwarm',vmin=vmin,vmax=vmax,
+               origin="lower", aspect="auto",interpolation=interp)
+
+    """
+    # Fill Z with corresponding values
+    for iy, (xrow, yrow) in enumerate(zip(X,Y)):
+        for ix , (x_value, y_value) in enumerate(zip(xrow,yrow)):
+            # ix = np.argmin( np.abs( x_unique - xi))
+            # iy = np.argmin( np.abs( y_unique - yi))
+            jx = np.where( np.abs( rho_s - x_value) <= dx*0.5)[0]
+            jy = np.where(np.abs(  rho_n - y_value) <= dy*0.5)[0]
+            if jx.size != 0 and jy.size != 0:
+            # Z[iy, ix] = zi[ind].mean()
+            
+                Z[iy, ix] = I[np.meshgrid(jx,jy)].mean()
+    plt.imshow(Z, extent=[x_unique.min(), x_unique.max(), y_unique.min(), y_unique.max()],\
+               cmap ='coolwarm',vmin=vmin,vmax=vmax,
+               origin="lower", aspect="auto",interpolation=interp)
+    """
+    cb = plt.colorbar(label="")
+    cb.set_label("Decoding Improvement [%]",size = 15)
+    plt.xlabel("Signal Correlation",size = 15)
+    plt.ylabel("Noise Correlation", size = 15)
+    plt.axhline(0, c='black',lw=1)
+    plt.axvline(0, c='black',lw=1)
+    plt.ylim(ymin, ymax)
+    plt.xlim(xmin, xmax)
+    # plt.plot(rho_s_support, rho_star, ls = '--', c = 'black', lw = 0.5)
+    plt.gca().spines['top'].set_visible(False)
+    plt.gca().spines['right'].set_visible(False)
+    plt.show()
     
     return

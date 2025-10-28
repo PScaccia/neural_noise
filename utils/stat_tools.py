@@ -259,6 +259,34 @@ def compute_bar_experiment_MI( noise = 10, N_points_deltat = 200, N_points_rhon 
     
     return rhos_grid, rhon_grid, synergy_grid
 
+
+def compute_signal_corr_from_shift(tuning_shift, rho):
+    from network import NeuralSystem, THETA
+    
+    config = {  
+                'rho'           : rho ,
+                # 'alpha'         : np.arange(0.0,0.44,0.02),
+                'alpha'         : 0.0,
+                'beta'          : 1,
+                'function'      : 'fvm',
+                'A'             : 0.17340510276921817,
+                'width'         : 0.2140327993142855,
+                'flatness'      : 0.6585904840291591,
+                'b'             : 1.2731732385019432,
+                'center'        : 2.9616211149125977 - 0.21264734641020677,
+                'center_shift'  : np.nan,
+                }
+    system = NeuralSystem(config)
+    rho_s = np.zeros_like(tuning_shift)
+
+    for i, dt in enumerate(tuning_shift):
+        config['center_shift'] = dt
+        system = NeuralSystem(config)
+        mus = np.array([ list(map(system.mu[0],THETA)), list(map(system.mu[1], THETA))])
+        rho_s[i] = np.corrcoef(mus,rowvar=True)[1,0]
+    
+    return rho_s
+
 def read_landscape_simulation( file_list, batch_size = 100, n_workers = 1):
         # file = None, a = None, delta_theta = None, imp = None,
         #                       vmin = -5, vmax = 5):

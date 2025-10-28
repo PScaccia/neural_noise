@@ -15,6 +15,7 @@ import h5py
 from   tqdm import tqdm
 import numpy as np
 from   config.landscape import config
+import cupy as cp
 
 __version__ = 1.0
 
@@ -122,44 +123,6 @@ def compute_signal_quantities_parallel(N_theta_int, n_processes=None, chunk_size
 
     return tuning_curve_matrix, ind_cov_matrices, ind_inv_cov_matrices, ind_log_det_matrix, cov_matrices, inv_cov_matrices, log_det_matrix
 
-
-def generate_responses(mu, sigma, n_trials, n_theta_subsample, n_processes=None):
-    """
-    Parameters
-    ----------
-    mu : np.ndarray
-        DESCRIPTION.
-    sigma : np.ndarray
-        DESCRIPTION.
-    n_trials : int
-        DESCRIPTION.
-    n_theta_subsample : int
-        DESCRIPTION.
-    n_processes : int, optional
-        DESCRIPTION. The default is None.
-
-    Returns
-    -------
-    responses : np.ndarray
-        DESCRIPTION.
-
-    """
-    nx, ny, n_theta = sigma.shape[:3]
-    if n_theta%n_theta_subsample != 0:
-        sys.exit(f"Uneven angle resampling: trying to resample each {n_theta_subsample} "
-                 "angles from an array of {n_theta}")
-        
-    responses = np.zeros( (nx, ny, n_theta//n_theta_subsample, n_trials, 2) )
-
-    for ix in range(nx):
-        for iy in range(ny):
-            for itheta in range(n_theta//n_theta_subsample):
-                responses[ix,iy,itheta,:] =  np.random.multivariate_normal(  
-                                                       mu[ix,:,itheta*n_theta_subsample],              # Average Vector
-                                                       sigma[ix,iy,itheta*n_theta_subsample,:,:],      # Covariance Matrix
-                                                       size = n_trials )
-        
-    return responses
 
 def generate_response_chunk_indices_only(args):
     """Worker function that receives only indices and reconstructs what it needs"""
@@ -312,7 +275,6 @@ def bayesian_decoder(args):
 
  
 def compute_bayesan_extimate_gpu(r, mu, inv_sigma, log_det, batch_size = 50):
-    import cupy as cp
         
     theta_ext     = np.zeros( r.shape[:-1] )
     theta_support = cp.linspace(0,2*cp.pi,mu.shape[-2])
@@ -324,53 +286,26 @@ def compute_bayesan_extimate_gpu(r, mu, inv_sigma, log_det, batch_size = 50):
     cp_mu        = cp.asarray(mu)
     cp_inv_sigma = cp.asarray(inv_sigma)
     cp_log_det   = cp.asarray(log_det)
-        
+
     for t in tqdm(range(n_stimuli),desc='Decoding responses: '):
         for batch_id in range(0, n_trials, batch_size):
             end_idx = min(batch_id + batch_size, n_trials)
             r_batch = r[:, :, t, batch_id:end_idx, :]   
-            theta_ext[:,:,t,batch_id:end_idx ] = cp.asnumpy( 
-                                                             cp_bayesian_decoder( cp.asarray(r_batch),
-                                                                                 cp_mu,
-                                                                                 cp_inv_sigma,
-                                                                                 cp_log_det,
-                                                                                 sin_theta,
-                                                                                 cos_theta,
-                                                                                 theta_support)  
-                                                             ) 
-            cp.get_default_memory_pool().free_all_blocks()
-            
-    # Create batches
-    # args_list = []
-    
-    # for t in tqdm(range(n_stimuli),desc='Decoding responses: '):
-    #     for batch_id in range(0, n_trials, batch_size):
-    #         end_idx = min(batch_id + batch_size, n_trials)
-    #         trial_indices = list(range(batch_id, end_idx))
-    #         r_batch = r[:, :, t, batch_id:end_idx, :]   
-    #         args_list.append((
-    #             batch_id // batch_size,
-    #             trial_indices,
-    #             r_batch,
-    #             mu,
-    #             inv_sigma,
-    #             log_det,
-    #             sin_theta,
-    #             cos_theta,
-    #             theta_support
-    #         ))
-    #     with Pool(processes=n_processes) as pool:
-    #         for arg in args_list:
-    #             batch_results = list(tqdm(
-    #                 pool.imap(bayesian_decoder, args_list),
-    #                 total=len(args_list),
-    #                 desc='Decoding responses (batched)'
-    #             ))
 
-    #     for trial_index, trial_results in batch_results:
-    #           theta_ext[:, :, t, trial_index] = trial_results
-    
-    
+            tmp = cp.asnumpy( 
+                                cp_bayesian_decoder( cp.asarray(r_batch),
+                                                     cp_mu,
+                                                     cp_inv_sigma,
+                                                     cp_log_det,
+                                                     sin_theta,
+                                                     cos_theta,
+                                                     theta_support)  
+                            ) 
+
+            theta_ext[:,:,t,batch_id:end_idx ] = tmp
+            cp.get_default_memory_pool().free_all_blocks()
+                
+    cp.get_default_memory_pool().free_all_blocks()
     return theta_ext
 
 def cp_bayesian_decoder(r, mu, inv_sigma, log_det, sin_theta, cos_theta, theta_support):
@@ -411,14 +346,15 @@ def cp_bayesian_decoder(r, mu, inv_sigma, log_det, sin_theta, cos_theta, theta_s
 if __name__ == '__main__':
     
     N_theta_int       = 180
-    N_theta_subsample = 5
+    N_theta_subsample = 2
     N_trial           = config['N']
     beta              = config['beta']
     n_processes       = 30
-    signal_dependency_file = "/home/paolo/data/signal_dependences.hdf5"
-    response_file          = "/home//paolo/data/responses.hdf5"
-    results_file           = "/home//paolo/data/bayesian_decoding.hdf5"
-    performance_file       = "/home//paolo/data/performance.hdf5"
+    signal_dependency_file = "/home/paolo/data/signal_dependences_90points.hdf5"
+    response_file          = "/home//paolo/data/responses_90points.hdf5"
+    results_file           = "/home//paolo/data/bayesian_decoding_90points.hdf5"
+    performance_file       = "/home//paolo/data/performance_90points.hdf5"
+    attrs = {'beta' : beta, 'n_stimuli' : int(N_theta_int/N_theta_subsample) }
     
     """Compute Signal Manifolds and Cov. Matrices"""    
     if not os.path.isfile(signal_dependency_file):
@@ -432,8 +368,10 @@ if __name__ == '__main__':
                    'ind_log_det_sigma' : ind_log_det_sigma ,
                    'sigma'             : sigma,
                    'inv_sigma'         : inv_sigma,
-                   'log_det_sigma'     : log_det_sigma }
-        save_results_hdf5(results, signal_dependency_file, beta = beta , version = __version__)
+                   'log_det_sigma'     : log_det_sigma,
+                   'tuning_shift'      : config['center_shift'],
+                   'noise_correlation' : config['alpha']       }
+        save_results_hdf5(results, signal_dependency_file, attrs = attrs , version = __version__)
     else:
         # Read Input file with Tuning Curves, Inverse Covariance Matrices and determinants
         print("Reading file", signal_dependency_file)
@@ -446,7 +384,11 @@ if __name__ == '__main__':
         print("Generating Responses")        
         responses     = generate_responses_memory_efficient(mu, sigma, N_trial , N_theta_subsample, n_processes = n_processes) 
         ind_responses = generate_responses_memory_efficient(mu, ind_sigma[:,None,:,:,:], N_trial , N_theta_subsample, n_processes = n_processes)
-        save_results_hdf5({'responses' : responses, 'ind_responses' : ind_responses}, response_file, beta = beta , version = __version__)
+        print('Saving results...')
+        save_results_hdf5({'responses' : responses, 
+                           'ind_responses'     : ind_responses,
+                           'tuning_shift'      : config['center_shift'],
+                           'noise_correlation' : config['alpha']       }, response_file, attrs = attrs, version = __version__)
     else:
         print("Reading Response File {}".format(response_file) )
         with h5py.File(response_file,'r') as input_file:
@@ -455,10 +397,12 @@ if __name__ == '__main__':
     
     """Compute Bayesian Extimates"""
     if not os.path.isfile(results_file):
-        theta_ext     = compute_bayesan_extimate(responses, mu, inv_sigma, log_det_sigma, n_processes = 10)
-        ind_theta_ext = compute_bayesan_extimate(ind_responses, mu, ind_inv_sigma[None,...], ind_log_det_sigma[None,...], n_processes = 10)    
+        theta_ext     = compute_bayesan_extimate_gpu(responses, mu, inv_sigma, log_det_sigma)
+        ind_theta_ext = compute_bayesan_extimate_gpu(ind_responses, mu, ind_inv_sigma[:,None,...], ind_log_det_sigma[:,None,...])    
         save_results_hdf5( {'theta_extimate'     : theta_ext,
-                            'ind_theta_extimate' : ind_theta_ext }, results_file, beta = beta , version = __version__)
+                            'ind_theta_extimate' : ind_theta_ext,
+                            'tuning_shift'       : config['center_shift'],
+                            'noise_correlation'  : config['alpha']         }, results_file, attrs =attrs , version = __version__)
     else:
         print("Reading Decoding Extimates {}".format(results_file) )
         with h5py.File(results_file,'r') as input_file:
@@ -466,8 +410,10 @@ if __name__ == '__main__':
     del(responses, ind_responses)
     
     """Compute Decoding Error"""    
-    RMSE = compute_RMSE(theta_ext, np.linspace(0,2*np.pi, theta_ext.shape[-1]) )
-    ind_RMSE = compute_RMSE(ind_theta_ext, np.linspace(0,2*np.pi, ind_theta_ext.shape[-1]) )
-    save_results_hdf5( {'RMSE'     : RMSE,
-                        'ind_RMSE' : ind_RMSE }, performance_file, beta = beta , version = __version__)
+    RMSE = compute_RMSE(theta_ext, np.linspace(0,2*np.pi, theta_ext.shape[-2]) )
+    ind_RMSE = compute_RMSE(ind_theta_ext, np.linspace(0,2*np.pi, ind_theta_ext.shape[-2]) )
+    save_results_hdf5( {'RMSE'              : RMSE,
+                        'ind_RMSE'          : ind_RMSE, 
+                        'tuning_shift'      : config['center_shift'],
+                        'noise_correlation' : config['alpha']     }, performance_file, attrs = attrs , version = __version__)
     

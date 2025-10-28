@@ -94,7 +94,7 @@ def remove_case_from_results(file, a = None, b = None):
 
 
 
-def save_results_hdf5(data_dict, filename, beta = None, version = 999):
+def save_results_hdf5(data_dict, filename, attrs = None, version = 999):
     """
     Salva o appende i risultati di una simulazione in un file HDF5.
 
@@ -113,7 +113,9 @@ def save_results_hdf5(data_dict, filename, beta = None, version = 999):
 
     with h5py.File(filename, mode) as f:
         
-        if beta is not None: f.attrs['beta'] = beta
+        if attrs is not None: 
+            for k,v in attrs.items():
+                f.attrs[k] = v
         f.attrs['edit_date'] = datetime.now().isoformat()
         f.attrs['version']   = version
         if mode == 'w':  f.attrs['craetion_date'] = datetime.now().isoformat()
@@ -139,7 +141,7 @@ def save_results_hdf5(data_dict, filename, beta = None, version = 999):
 
                 # Estendi dataset sull’ultimo asse
                 new_size = dset.shape[-1] + arr.shape[-1]
-                dset.resize(new_size, axis=-1)
+                dset.resize(new_size, axis=len(dset.shape)-1)
                 dset[..., -arr.shape[-1]:] = arr
 
     print(f"Created file {filename}" if mode == 'w' else f"Updated file {filename}")
