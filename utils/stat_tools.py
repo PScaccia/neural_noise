@@ -102,12 +102,59 @@ def compute_MSE(theta_sampling, theta, mode = 'mse', errors = False):
         else:
             return MSE, None
 
-def compute_RMSE(theta_sampling, theta):
+def compute_RMSE( args ):
     from scipy.stats import circmean, circstd
-    diff = theta[None, None,:,None] - theta_sampling
-    MSE = circmean( np.arctan2( np.sin(diff), np.cos(diff))**2, axis = -1 )
-    return np.sqrt(MSE)
+    xs, ys, theta, theta_sampling = args 
+    diff = theta[None,None,None,:] - theta_sampling
+    MSE = circmean( np.arctan2( np.sin(diff), np.cos(diff))**2, axis = 2 )    
+    return (xs,ys,np.sqrt(MSE))
 
+def compute_RMSE_multiprocess(file, theta, key, n_processes = None, batch_size = 20):
+    import sys
+    import h5py
+    from multiprocess import Pool
+    from tqdm import tqdm
+
+    def iter_grid_batches(Nx, Ny, bx, by):
+        for i in range(0, Nx, bx):
+            for j in range(0, Ny, by):
+                yield slice(i, min(i+bx, Nx)), slice(j, min(j+by, Ny))
+
+    with h5py.File(file,'r') as handle:
+        nx,ny,n_trials,n_stimuli = handle[key].shape
+        RMSE = np.empty( (nx,ny,n_stimuli)  )*np.nan
+
+        args_list = []
+        for xs, ys in tqdm( iter_grid_batches(nx, ny, batch_size, batch_size), total = int(nx*ny/(batch_size**2)), desc = 'Preparing input'):
+            args_list.append((xs, ys, theta, handle[key][xs,ys,...]))
+            
+        with Pool(processes=n_processes) as pool:
+            for xs,ys, mse in tqdm(
+                                pool.map(compute_RMSE, args_list),
+                                total=len(args_list),
+                                desc='Decoding responses (batched)'
+                                ):
+                  RMSE[xs, ys, :] = mse
+    del(args_list)
+    return RMSE
+
+def tmp(file, theta, key, n_processes = None, batch_size = 20):
+    import sys
+    import h5py
+    from multiprocess import Pool
+    from tqdm import tqdm
+    from scipy.stats import circmean, circstd
+
+    with h5py.File(file,'r') as handle:
+        nx,ny,n_trials,n_stimuli = handle[key].shape
+        RMSE = np.empty( (nx,ny,n_stimuli)  )*np.nan
+
+        for t in tqdm(range(n_stimuli)):
+            diff = theta[None,None,None,t] - handle[key][:,:,:,t]
+            MSE = circmean( np.arctan2( np.sin(diff), np.cos(diff))**2, axis = 0 )    
+            RMSE[:,:, t] = MSE
+                
+    return RMSE
 def compute_innovation(results, errors = False, silent_mode = False):
     from network import THETA
     from decoder import circular_moving_average
@@ -286,6 +333,44 @@ def compute_signal_corr_from_shift(tuning_shift, rho):
         rho_s[i] = np.corrcoef(mus,rowvar=True)[1,0]
     
     return rho_s
+
+def compute_transition_line(rho, beta, n_points = 1000):
+    from network import NeuralSystem, THETA
+    
+    theta_support = np.linspace(0, 2*np.pi, 1000)
+    config = {  
+                'rho'           : rho ,
+                'alpha'         : 0.0,
+                'beta'          : beta,
+                'function'      : 'fvm',
+                'A'             : 0.17340510276921817,
+                'width'         : 0.2140327993142855,
+                'flatness'      : 0.6585904840291591,
+                'b'             : 1.2731732385019432,
+                'center'        : 2.9616211149125977 - 0.21264734641020677,
+                'center_shift'  : np.nan,
+                }
+
+    rho_star = np.zeros(n_points)
+    rho_s    = np.zeros(n_points)
+    delta_t  = np.linspace(0, 2*np.pi ,n_points)
+
+    for i,dt in enumerate(delta_t):
+        config['center_shift'] = dt
+        system     = NeuralSystem(config)
+
+        Sigma_n = np.average(np.array(list( map(system.sigma, theta_support) )),axis=0)
+        mus = np.array([[system.mu[0](t),system.mu[1](t)] for t in theta_support])
+        v1_n,v2_n = Sigma_n[0,0], Sigma_n[1,1]
+        v1_s,v2_s = np.var(mus,axis=0)
+        A = np.sqrt( (v1_s*v2_s)/(v1_n*v2_n))
+        B = np.sqrt((v1_n + v1_s)*(v2_n + v2_s)/(v1_s*v2_s))
+        local_rho_s = np.corrcoef(mus, rowvar=False)[1,0]
+        rho_star[i] = -2*A*local_rho_s/(1+(local_rho_s**2 - B**2)*(A**2))
+        rho_s[i] = local_rho_s
+        
+    return rho_s, rho_star
+
 
 def read_landscape_simulation( file_list, batch_size = 100, n_workers = 1):
         # file = None, a = None, delta_theta = None, imp = None,
