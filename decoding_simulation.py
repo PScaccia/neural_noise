@@ -6,9 +6,8 @@ Created on Mon Oct 20 11:34:56 2025
 @author: paolos
 """
 from   utils.io_tools   import save_results_hdf5
-from   utils.stat_tools import compute_RMSE_multiprocess
-from   network import NeuralSystem, THETA
-import scipy
+# from   utils.stat_tools import compute_RMSE_multiprocess
+from   network import NeuralSystem
 import copy, os, sys
 from   multiprocess import Pool
 import h5py
@@ -17,6 +16,7 @@ import numpy as np
 from   config.landscape import config
 import cupy as cp
 from   datetime import datetime
+import gc
 
 __version__ = 1.0
 
@@ -185,58 +185,6 @@ def generate_responses_memory_efficient(mu, sigma, n_trials, n_theta_subsample, 
     return responses
 
 
-def compute_bayesan_extimate(r, mu, inv_sigma, log_det, n_processes = None):
-          
-    theta_ext     = np.zeros( r.shape[:-1] )
-    theta_support = np.linspace(0,2*np.pi,mu.shape[-2])
-    sin_theta     = np.sin(theta_support)
-    cos_theta     = np.cos(theta_support)
-    n_stimuli     = r.shape[2]
-    n_trials = r.shape[3]
-
-    """
-    args_list = [ (r[:,:,t,:,:], mu, inv_sigma, log_det_sigma, sin_theta, cos_theta, theta_support) for t in range(n_stimuli) ]
-
-    # Parallel processing
-    with Pool(processes=Pool()._processes) as pool:
-        results = pool.map(bayesian_decoder, args_list)
-        for t, result in enumerate(tqdm(  results, desc = 'Computing Theta ext') ):
-            theta_ext[:,:,t,:] = result
-    """
-    
-    # Determine batch size
-    if n_processes is None:
-        n_processes = Pool()._processes
-    
-    batch_size = max(1, n_trials // (n_processes))
-    
-    # Create batches
-    args_list = []
-    
-    for t in tqdm(range(n_stimuli),desc='Decoding responses: '):
-        for batch_id in range(0, n_trials, batch_size):
-            end_idx = min(batch_id + batch_size, n_trials)
-            trial_indices = list(range(batch_id, end_idx))
-            r_batch = r[:, :, t, batch_id:end_idx, :]   
-            args_list.append((
-                batch_id // batch_size,
-                trial_indices,
-                r_batch,
-                mu,
-                inv_sigma,
-                log_det,
-                sin_theta,
-                cos_theta,
-                theta_support
-            ))
-
-    with Pool(processes=n_processes) as pool:
-            batch_results = tqdm( pool.map( compute_RMSE, args_list)  , desc='Decoding responses (batched)')
-
-    for trial_index, trial_results in batch_results:
-          theta_ext[:, :, t, trial_index] = trial_results
-        
-    return theta_ext
 
  
 def compute_bayesan_extimate_gpu(r, mu, inv_sigma, log_det, batch_size = 50):
@@ -274,11 +222,15 @@ def compute_bayesan_extimate_gpu(r, mu, inv_sigma, log_det, batch_size = 50):
     return theta_ext
 
 
-def compute_bayesan_extimate_gpu_in_batches(response_file, results_file, key, results_key, mu, inv_sigma, log_det, batch_size = 50, file_attrs = None):
+def compute_bayesan_extimate_gpu_in_batches(response_file, results_file, key, results_key, mu, inv_sigma, log_det, batch_size = 50, file_attrs = None , debug_mode = False):
         
     with h5py.File(response_file,'r') as handle:
         resp_shape = handle['responses'].shape
-
+    print('Reading responses in ',response_file)
+    
+    pool = cp.cuda.MemoryPool(cp.cuda.malloc_managed)
+    cp.cuda.set_allocator(pool.malloc)
+    
     theta_support = cp.linspace(0, 2*cp.pi, mu.shape[-2])
     sin_theta     = cp.sin(theta_support)
     cos_theta     = cp.cos(theta_support)
@@ -293,41 +245,45 @@ def compute_bayesan_extimate_gpu_in_batches(response_file, results_file, key, re
     with h5py.File(response_file, 'r') as f:
        nx_points, ny_points = f[key].shape[:2]
 
-       for batch_id in tqdm( range(0, n_trials, batch_size) , desc='Decoding responses: ', unit = 'batch'):
-          end_idx = min(batch_id + batch_size, n_trials)
+    for batch_id in tqdm( range(0, n_trials, batch_size) , desc='Decoding responses: ', unit = 'batch'):
+        
+       if batch_id > 0 and debug_mode: continue 
+        
+       end_idx = min(batch_id + batch_size, n_trials)
 
-          theta_ext     = np.zeros( ( nx_points, ny_points, end_idx - batch_id,  n_stimuli  )  )
+       theta_ext     = np.zeros( ( nx_points, ny_points, end_idx - batch_id,  n_stimuli  )  )
 
-          for t in tqdm(range(n_stimuli),leave = True, unit = 'stimulus'):
-
-                # Load data for this batch
-                r_batch = f[key][:, :, t, batch_id:end_idx, :]    
-
-                tmp = cp.asnumpy( 
-                                    cp_bayesian_decoder( cp.asarray(r_batch),
-                                                         cp_mu,
-                                                         cp_inv_sigma,
-                                                         cp_log_det,
-                                                         sin_theta,
-                                                         cos_theta,
-                                                         theta_support)  
-                                ) 
-    
-                theta_ext[:,:, :, t ] = tmp
-                cp.get_default_memory_pool().free_all_blocks()
-          
-          save_results_hdf5( { results_key     : theta_ext  }, results_file, silent_mode = True, attrs = file_attrs)
+       for t in tqdm(range(n_stimuli),leave = True, unit = 'stimulus'):
+ 
+             theta_ext[:,:, :, t ] = cp.asnumpy( 
+                                                 cp_bayesian_decoder( response_file,
+                                                                      key,
+                                                                      (t, batch_id, end_idx),
+                                                                      cp_mu,
+                                                                      cp_inv_sigma,
+                                                                      cp_log_det,
+                                                                      sin_theta,
+                                                                      cos_theta,
+                                                                      theta_support)  
+                                               )
+             cp.get_default_memory_pool().free_all_blocks()
+       
+       print('saving results ', theta_ext.shape )
+       save_results_hdf5( { results_key  : theta_ext  }, results_file, silent_mode = True, attrs = file_attrs)
  
     cp.get_default_memory_pool().free_all_blocks()
     return
 
 
-def cp_bayesian_decoder(r, mu, inv_sigma, log_det, sin_theta, cos_theta, theta_support):
+def cp_bayesian_decoder(file, key, indices, mu, inv_sigma, log_det, sin_theta, cos_theta, theta_support):
     """
     r:  (Nx,Ny,N_trials,2)
     mu: (Nx,N_theta_int, 2)
     
     """
+    with h5py.File(file,'r') as handle:
+        t, batch_id, end_idx = indices
+        r = cp.asarray(handle[key][:, :, t, batch_id:end_idx, :])
     dr = r[:,:,:,None,:] - mu[:,None,None,:,:] 
 
     # cost_function = np.einsum("ijkab,ijhka,ijhkb->ijkh",inv_sigma, dr,dr) + log_det[:,:,:,None]
@@ -357,28 +313,18 @@ def cp_bayesian_decoder(r, mu, inv_sigma, log_det, sin_theta, cos_theta, theta_s
     return cp.mod( extimate , 2*cp.pi )
 
 
-
-
-'''
-def f(args):
-
-    indices,  r_batch,  mu, inv_sigma, log_det, sin_theta, cos_theta = args
-    n_stimuli = r_batch.shape[-3]
-    theta_ext  = np.zeros( ( r_batch.shape[0], r_batch.shape[1], r_batch.shape[-2],  n_stimuli  )  )
-
-    for t in range(n_stimuli):
-        theta_ext[:,:,:,t]  = bayesian_decoder( r_batch, mu, inv_sigma, log_det, sin_theta, cos_theta, theta_support )
-    
-    return (indices, theta_ext)
-
-
-def bayesian_decoder(r, mu, inv_sigma, log_det, sin_theta, cos_theta, theta_support):
+def bayesian_decoder(args):
     """
     r:  (Nx,Ny,N_trials,2)
     mu: (Nx,N_theta_int, 2)
     
     """
-    dr = r[:,:,:,None,:] - mu[:,None,None,:,:] 
+    mu, inv_sigma, log_det, theta, sin_theta, cos_theta, t, batch_id, end_idx, file, key, results_file, results_key, attrs = args
+
+    with h5py.File(response_file,'r') as handle:
+        r = handle[key][:, :, t, batch_id:end_idx, :]
+
+    dr = r[:,:,:, None,:] - mu[:,None,:,:] 
 
     # cost_function = np.einsum("ijkab,ijhka,ijhkb->ijkh",inv_sigma, dr,dr) + log_det[:,:,:,None]
     cost_function = np.einsum("abdij,abcdi,abcdj->abcd",inv_sigma, dr,dr) + log_det[:,:,None,:]
@@ -400,10 +346,11 @@ def bayesian_decoder(r, mu, inv_sigma, log_det, sin_theta, cos_theta, theta_supp
 
     # Compute stimulus extimate
     extimate = np.arctan2(sin, cos)
+    extimate = np.mod( extimate , 2*np.pi )
 
-    return np.mod( extimate , 2*np.pi )
-
-def compute_bayesan_extimate_cpu_in_batches(response_file, results_file, key, results_key, mu, inv_sigma, log_det, batch_size = 50):
+    save_results_hdf5({results_key: extimate}, results_file, attrs = attrs, silent_mode=True)
+    return 
+def compute_bayesan_extimate_cpu_in_batches(response_file, results_file, key, results_key, mu, inv_sigma, log_det, batch_size = 50, file_attrs = None , debug_mode = False):
         
     with h5py.File(response_file,'r') as handle:
         resp_shape = handle['responses'].shape
@@ -413,68 +360,96 @@ def compute_bayesan_extimate_cpu_in_batches(response_file, results_file, key, re
     cos_theta     = np.cos(theta_support)
     n_stimuli     = resp_shape[2]
     n_trials      = resp_shape[3]
-
+    indices       = range(0, n_trials, batch_size)
+    n_processes   = len(indices)
     
     with h5py.File(response_file, 'r') as f:
        nx_points, ny_points = f[key].shape[:2]
 
-       for batch_id in tqdm( range(0, n_trials, batch_size) , desc='Decoding responses: ', unit = 'batch'):
-          end_idx    = min(batch_id + batch_size, n_trials)
+    work_items = []
 
-          theta_ext  = np.zeros( ( nx_points, ny_points, end_idx - batch_id,  n_stimuli  )  )
+    for t in tqdm( range(n_stimuli) ):
+        for batch_id in indices:
+           end_idx    = min(batch_id + batch_size, n_trials)
+           work_items.append( ( mu, inv_sigma, log_det, theta_support, sin_theta, cos_theta, t, batch_id, end_idx, response_file, key, results_file, results_key, file_attrs))
 
-          for t in tqdm(range(n_stimuli),leave = True, unit = 'stimulus'):
-
-              
-                # Load data for this batch
-                r_batch = f[key][:, :, t, batch_id:end_idx, :]    
-                
-            
-            # Parallel processing
-            with Pool(processes=n_processes) as pool:
-                results_per_ix = pool.map(generate_response_chunk_indices_only, work_items)
-    
-    # Collect results
-    for ix, chunk_results in enumerate(results_per_ix):
-        for local_ix, iy, itheta, response in chunk_results:
-            responses[ix, iy, itheta, :, :] = response
-    
-
-                tmp = cp.asnumpy( 
-                                    cp_bayesian_decoder( cp.asarray(r_batch),
-                                                         cp_mu,
-                                                         cp_inv_sigma,
-                                                         cp_log_det,
-                                                         sin_theta,
-                                                         cos_theta,
-                                                         theta_support)  
-                                ) 
-    
-                theta_ext[:,:, :, t ] = tmp
-                cp.get_default_memory_pool().free_all_blocks()
-          
-          save_results_hdf5( { results_key     : theta_ext  }, results_file, silent_mode = True)
- 
-    cp.get_default_memory_pool().free_all_blocks()
+        # Parallel processing
+        with Pool(processes=n_processes) as pool:
+            for result in tqdm( pool.imap(bayesian_decoder, work_items)):
+                 continue
     return
-'''
 
 
+def compute_RMSE( args ):
+    import h5py
+    from scipy.stats import circmean, circstd
+    xs, ys, theta, file, key = args 
+    
+    with h5py.File(file,'r') as handle:
+            theta_sampling = handle[key][xs,ys,...]
+    diff = theta[None,None,None,:] - theta_sampling
+    MSE  = circmean( np.arctan2( np.sin(diff), np.cos(diff))**2, axis = 2 )    
+    del(theta_sampling)
+    gc.collect()
+    return (xs,ys,np.sqrt(MSE))
+
+def compute_RMSE_multiprocess(file, key, n_processes = None, batch_size = 20, debug_mode = False):
+    import sys
+    from   multiprocess import Pool
+    from   tqdm import tqdm
+    import h5py
+
+    def iter_grid_batches(Nx, Ny, bx, by):
+        for i in range(0, Nx, bx):
+            for j in range(0, Ny, by):
+                yield slice(i, min(i+bx, Nx)), slice(j, min(j+by, Ny))
+
+    with h5py.File(file,'r') as handle:
+        nx,ny,n_trials,n_stimuli = handle[key].shape
+        
+    theta = np.linspace(0,2*np.pi,n_stimuli) 
+    RMSE  = np.empty( (nx,ny,n_stimuli)  )*np.nan
+
+    args_list = []
+    for xs, ys in iter_grid_batches(nx, ny, batch_size, batch_size):
+        args_list.append((xs, ys, theta, file, key))
+        
+    print('Computing error:')
+    with Pool(processes=n_processes) as pool:
+        results = tqdm(
+                            pool.imap(compute_RMSE, args_list),
+                            total=len(args_list),
+                            desc='Computing RMSE (batched)'
+                            )
+        for xs,ys, mse in results:
+               RMSE[xs, ys, :] = mse
+    return RMSE
 
 def arg_parser():
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('--n_proc',type=int,required=False, default=30,help="Number of workers")
-    parser.add_argument('--n_points_int',type=int,required=False, default = 180,help="Number of integration points for baysian extimate")
-    parser.add_argument('--n_subsample',type=int,required=False, default = 2,help="Number of input angles to be skipped for each point on the signal manifold")
-    parser.add_argument('--generate_responses',action='store_true', default=False, help="Generate and append responses to file (if it exists)")
-    parser.add_argument('--decode_responses',action='store_true', default=False, help="Decode responses")
-    parser.add_argument('--compute_error',action='store_true', default=False, help="Compute RMSE from decoded responses")
+    parser.add_argument('--n_proc',       type=int, required=False, default = 30,    help="Number of workers")
+    parser.add_argument('--n_points_int', type=int, required=False, default = 180,   help="Number of integration points for baysian extimate")
+    parser.add_argument('--decoding_batch_size', type=int, required=False, default = 60, help="Batch size for decoding")
+    parser.add_argument('--n_subsample',  type=int, required=False, default = 2,     help="Number of input angles to be skipped for each point on the signal manifold")
+    parser.add_argument('--wrkdir','-w',  type=str, required=False, default = "/home/paolo/data/",   help="Workdir")
+    parser.add_argument('--generate_responses',action='store_true', default=False,   help="Generate and append responses to file (if it exists)")
+    parser.add_argument('--decode_responses',  action='store_true', default=False,   help="Decode responses")
+    parser.add_argument('--compute_error',     action='store_true', default=False,   help="Compute RMSE from decoded responses")
+    parser.add_argument('--debug',             action='store_true', default=False,   help="Debug Mode")
+    parser.add_argument('--extra_tag','-e',  type=str, required=False, default = "", help="Extra tag for the filename")
     return parser.parse_args()
 
+def print_intro(args):
+    
+    for arg, value in args.__dict__.items():
+        print(f"{arg:>20} : {repr(value):>10}")
+    print()
+    
 if __name__ == '__main__':
 
     args = arg_parser()
+    print_intro(args) 
     
     N_theta_int       = args.n_points_int
     N_theta_subsample = args.n_subsample
@@ -482,10 +457,10 @@ if __name__ == '__main__':
     n_processes       = args.n_proc
     n_stimuli         = int(N_theta_int/N_theta_subsample)
     
-    signal_dependency_file = "/home/paolo/data/signal_dependences_90points.hdf5"
-    response_file          = "/home//paolo/data/responses_90points.hdf5"
-    results_file           = "/home//paolo/data/bayesian_decoding_90points.hdf5"
-    performance_file       = "/home//paolo/data/performance_90points.hdf5" 
+    signal_dependency_file = os.path.join( args.wrkdir, 'signal_dependences_'+args.extra_tag+'.h5' )
+    response_file          = os.path.join( args.wrkdir, 'responses_'+args.extra_tag+'.h5' )
+    results_file           = os.path.join( args.wrkdir, 'bayesian_extimate_'+args.extra_tag+'.h5' )
+    performance_file       = os.path.join( args.wrkdir, 'improvement_'+args.extra_tag+'.h5' )
     attrs = {'beta' : config['beta'], 'n_stimuli' : n_stimuli, 'version' : __version__ }
     
     """Compute Signal Manifolds and Cov. Matrices"""    
@@ -528,16 +503,19 @@ if __name__ == '__main__':
         compute_bayesan_extimate_gpu_in_batches(response_file, results_file, 
                                                                 'responses', 'theta_extimate', 
                                                                 mu, inv_sigma, log_det_sigma, 
-                                                                batch_size = 60, file_attrs = attrs )
+                                                                batch_size = args.decoding_batch_size, 
+                                                                file_attrs = attrs, debug_mode = args.debug)
         compute_bayesan_extimate_gpu_in_batches(response_file,results_file, 
                                                                 'ind_responses', 'ind_theta_extimate', 
                                                                 mu, ind_inv_sigma[:,None,...], ind_log_det_sigma[:,None,...],
-                                                                batch_size = 60, file_attrs = attrs )
+                                                                batch_size = args.decoding_batch_size, 
+                                                                file_attrs = attrs , debug_mode = args.debug)
     """Compute Decoding Error"""            
     if args.compute_error:    
-        RMSE     = compute_RMSE_multiprocess(results_file, np.linspace(0,2*np.pi,n_stimuli), 'theta_extimate', n_processes = 5, batch_size = 5 )
-        ind_RMSE = compute_RMSE_multiprocess(results_file, np.linspace(0,2*np.pi,n_stimuli), 'ind_theta_extimate', n_processes = 5, batch_size = 5)
+        RMSE     = compute_RMSE_multiprocess(results_file, 'theta_extimate',     n_processes = 15, batch_size = 5 , debug_mode = args.debug)
+        ind_RMSE = compute_RMSE_multiprocess(results_file, 'ind_theta_extimate', n_processes = 15, batch_size = 5, debug_mode = args.debug)
         save_results_hdf5( {'RMSE'              : RMSE,
                             'ind_RMSE'          : ind_RMSE, 
                             'tuning_shift'      : config['center_shift'],
-                            'noise_correlation' : config['alpha']     }, performance_file, attrs = attrs , version = __version__)
+                            'noise_correlation' : config['alpha']     }, 
+                          performance_file, attrs = attrs , version = __version__)

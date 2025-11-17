@@ -103,17 +103,23 @@ def compute_MSE(theta_sampling, theta, mode = 'mse', errors = False):
             return MSE, None
 
 def compute_RMSE( args ):
+    import h5py
     from scipy.stats import circmean, circstd
-    xs, ys, theta, theta_sampling = args 
+    xs, ys, theta, file, key = args 
+    
+    with h5py.File(file,'r') as handle:
+            theta_sampling = handle[key][xs,ys,...]
+    print(xs)
     diff = theta[None,None,None,:] - theta_sampling
-    MSE = circmean( np.arctan2( np.sin(diff), np.cos(diff))**2, axis = 2 )    
+    MSE  = circmean( np.arctan2( np.sin(diff), np.cos(diff))**2, axis = 2 )    
+    del(theta_sampling)
     return (xs,ys,np.sqrt(MSE))
 
-def compute_RMSE_multiprocess(file, theta, key, n_processes = None, batch_size = 20):
+def compute_RMSE_multiprocess(file, key, n_processes = None, batch_size = 20, debug_mode = False):
     import sys
+    from   multiprocess import Pool
+    from   tqdm import tqdm
     import h5py
-    from multiprocess import Pool
-    from tqdm import tqdm
 
     def iter_grid_batches(Nx, Ny, bx, by):
         for i in range(0, Nx, bx):
@@ -122,20 +128,22 @@ def compute_RMSE_multiprocess(file, theta, key, n_processes = None, batch_size =
 
     with h5py.File(file,'r') as handle:
         nx,ny,n_trials,n_stimuli = handle[key].shape
-        RMSE = np.empty( (nx,ny,n_stimuli)  )*np.nan
+        
+    theta = np.linspace(0,2*np.pi,n_stimuli) 
+    RMSE  = np.empty( (nx,ny,n_stimuli)  )*np.nan
 
-        args_list = []
-        for xs, ys in tqdm( iter_grid_batches(nx, ny, batch_size, batch_size), total = int(nx*ny/(batch_size**2)), desc = 'Preparing input'):
-            args_list.append((xs, ys, theta, handle[key][xs,ys,...]))
-            
-        with Pool(processes=n_processes) as pool:
-            for xs,ys, mse in tqdm(
-                                pool.map(compute_RMSE, args_list),
-                                total=len(args_list),
-                                desc='Decoding responses (batched)'
-                                ):
-                  RMSE[xs, ys, :] = mse
-    del(args_list)
+    args_list = []
+    for xs, ys in iter_grid_batches(nx, ny, batch_size, batch_size):
+        args_list.append((xs, ys, theta, file, key))
+        
+    with Pool(processes=n_processes) as pool:
+        results = tqdm(
+                            pool.map(compute_RMSE, args_list),
+                            total=len(args_list),
+                            desc='Decoding responses (batched)'
+                            )
+        for xs,ys, mse in results:
+               RMSE[xs, ys, :] = mse
     return RMSE
 
 def tmp(file, theta, key, n_processes = None, batch_size = 20):

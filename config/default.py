@@ -20,7 +20,7 @@ config = {  'label'         : 'poisson_det',
             'flatness'      : 0.8999356386649207,
             'b'             : 0.7487998754100026,
             'center_shift'  : np.pi/4,
-            'N'             : 2000,
+            'N'             : 5000,
             'int_step'      : 100
             }
 

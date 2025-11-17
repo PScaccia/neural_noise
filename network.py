@@ -8,7 +8,7 @@ Created on Thu Oct  3 10:09:15 2024
 import numpy as np
 import sys
 import progressbar
-from scipy.misc import derivative
+# from scipy.misc import derivative
 from math import sqrt
 from datetime import datetime
 import warnings
@@ -296,6 +296,14 @@ class NeuralSystem(object):
         return   self.beta * ( mu_average + np.sqrt(  delta )  ),\
                  self.beta * ( mu_average - np.sqrt( delta  )  )
 
+
+class TwoInputsNeuralSystem(NeuralSystem):
+    def __init__(self):
+        
+        return
+    
+
+    
 if __name__ == '__main__':
     from plot_tools import plot_simulation
     from cases import *

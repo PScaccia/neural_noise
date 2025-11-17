@@ -264,9 +264,11 @@ def plot_simulation_single_panel( system, stimolus, plot_gradient = False, E = N
         plt.savefig(outdir + '/simulation.png',bbox_inches='tight',dpi=300)
         print("Simulation plot saved in ",outdir + "/simulation.png")
     else:
+        return ax
+
         plt.show()
        
-    return 
+    return ax
 
 def plot_tuning_curves(mu1, mu2, ax = None):
     
@@ -280,7 +282,7 @@ def plot_tuning_curves(mu1, mu2, ax = None):
         ax.plot(THETA, mu2(THETA), label = 'Neuron 2')
         ax.set_xlabel(r"$\mathbf{\theta}$ (rad)",size=15)
         ax.set_ylabel("Activity",size=15,weight='bold')
-    return
+    return ax
 
 def plot_theta_error(theta, theta_sampling, MSE , title = ' ', 
                      outdir = None, FI = None, bias = None, filename = 'MSE.png'):
@@ -928,7 +930,7 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
         ax.set_yticklabels([])        
         ax.set_xlim(-dx-0.05,dx-0.05)
         ax.set_ylim(-dx+0.2,dx+0.2)
-
+        
         a = np.array([1, 6]).astype(float)
         b = np.array([3, 4]).astype(float) 
         center = 0.5*(a+b)
@@ -1038,7 +1040,7 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
         rhos = np.linspace(-1.0, 1.0,2*N+1)[1:-1]
         Sigma = np.array([[V1,0], [0, V2]])
         compute_pc = lambda x: 0.5*(1+erf(np.sqrt(d_prime_squared(b-a, x))/(2*np.sqrt(2))))
-        for dtheta in [5, 10, 30, 20, 40, 45,]:
+        for dtheta in [10, 20, 30, 45,]:
             theta = np.deg2rad(dtheta)
             Rotation = np.array([[np.cos(theta),-np.sin(theta)],[np.sin(theta),np.cos(theta)]])
             a = Rotation@a0
@@ -1071,9 +1073,9 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
         plt.xlabel("Noise Correlation", size = 18)
         plt.axhline(0,c='black',zorder = 12, lw=0.5)
         plt.axvline(0,c='black',zorder = 12, lw=0.5)
-        plt.xlim(0,None)
+        plt.xlim(0,1.2)
         if fix_det:    
-            plt.ylim(-10,2)
+            plt.ylim(-18,10)
         else:
             plt.ylim(-6,6)
         
@@ -1090,7 +1092,7 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
     # <------------------------------- FOURTH PANEL   
     if not skip_panelD:
 
-        config = {  'rho'           : 'poisson',
+        config = {  'rho'           : 'poisson' if not fix_det else 'poisson_det',
                     'alpha'         : 0.5,
                     'beta'          : 0.1,
                     'V'             : 1,
@@ -1108,16 +1110,19 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
         system2.alpha = 0.0
         system2.generate_variance_matrix()
 
-        plot_simulation_single_panel(system, [],plot_ticks=False, manifold_width=6)
+        ax = plot_simulation_single_panel(system, [], plot_ticks=False, manifold_width=6)
 
-        for t in [np.pi, np.pi-1, np.pi+1, np.pi - 2, np.pi + 2]:
-            draw_comparison(system, system2,plt.gca(),t, lw = 6)
+        for t in [np.pi]:
+            # np.pi-1, np.pi+1, np.pi - 2, np.pi + 2]:
+            print( np.linalg.det( system.sigma(t)), np.linalg.det( system2.sigma(t)))
+
+            draw_comparison(system, system2 , ax,t, lw = 6)
         
         OUTFIG = f"{OUTDIR}/figure1_panelD_1.pdf"
         plt.savefig( OUTFIG, dpi = 300, bbox_inches = 'tight')
         print("Saved plot ", OUTFIG)
         
-        config = {  'rho'           : 'poisson',
+        config = {  'rho'           : 'poisson' if not fix_det else 'poisson_det',
                     'alpha'         : 0.5,
                     'beta'          : 0.1,
                     'V'             : 1,
@@ -1134,9 +1139,11 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
         system2.alpha = 0.0
         system2.generate_variance_matrix()
         
-        plot_simulation_single_panel(system, [],plot_ticks=False, manifold_width=6)
-        for t in [np.pi, np.pi-0.5, np.pi+0.5, np.pi-1, np.pi+1]:
-            draw_comparison(system, system2,plt.gca(),t,lw = 6)
+        ax = plot_simulation_single_panel(system, [],plot_ticks=False, manifold_width=6)
+        for t in [np.pi]:
+                  # np.pi-0.5, np.pi+0.5, np.pi-1, np.pi+1]:
+                  print( np.linalg.det( system.sigma(t)), np.linalg.det( system2.sigma(t)))
+                  draw_comparison(system, system2, ax,t,lw = 6)
         OUTFIG = f"{OUTDIR}/figure1_panelD_2.pdf"
         plt.savefig( OUTFIG, dpi = 300, bbox_inches = 'tight')
         print("Saved plot ", OUTFIG)
@@ -1160,7 +1167,7 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
         plt.savefig( OUTFIG, dpi = 300, bbox_inches = 'tight')
         print("Saved plot ", OUTFIG)
 
-        config = {  'rho'           : 'poisson',
+        config = {  'rho'           : 'poisson' if not fix_det else 'poisson_det',
                     'alpha'         : 0.5,
                     'beta'          : 0.1,
                     'V'             : 1,
@@ -1180,7 +1187,7 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
         plt.xlabel("Stimulus [°]", size = 30)
         plt.ylabel("Response", size = 30)
         ax.set_yticklabels([])
-        plt.xticks([0,90,180,270,360],size = 20,width=2)
+        plt.xticks([0,90,180,270,360],size = 20)
         ax.set_xticklabels( ["0°","90°","180°","270°","360°"] )
         plt.xlim(0,360)
         ax.spines['top'].set_visible(False)
@@ -1921,10 +1928,12 @@ def plot_landscape(rho_s , rho_n, imp,
 
 
 def plot_improvement_landscape(hdf5_file, interp = 'none',
-                               dx = 0.04, dy = 0.04, 
+                               dx   = 0.04, dy   = 0.04, 
                                xmin = -0.8, xmax = 1, 
                                ymin = -0.5, ymax = 0.5,
-                               vmin = -1, vmax = 1):
+                               vmin = -1,   vmax = 1,
+                               plot_transition   = False,
+                               outdir = None):
     from utils.stat_tools import compute_signal_corr_from_shift, compute_transition_line
     import h5py
     
@@ -1935,8 +1944,9 @@ def plot_improvement_landscape(hdf5_file, interp = 'none',
         I = ( 1 - handle['RMSE'][:]/handle['ind_RMSE'][:])*100    
         I = I.mean(axis=-1).transpose()
 
-    critical_line_axis, critical_line = compute_transition_line('poisson', beta, n_points = 1000)
-
+    if plot_transition:
+        critical_line_axis, critical_line = compute_transition_line('poisson', beta, n_points = 1000)
+    
     x_unique = np.arange(-1,1,dx)
     y_unique = np.arange(-1,1,dy)
     X, Y = np.meshgrid(x_unique, y_unique)
@@ -1969,9 +1979,16 @@ def plot_improvement_landscape(hdf5_file, interp = 'none',
     plt.axvline(0, c='black',lw=1)
     plt.ylim(ymin, ymax)
     plt.xlim(xmin, xmax)
-    plt.plot(critical_line_axis, critical_line, ls = '--', c = 'black', lw = 0.5)
+    if plot_transition:
+        plt.plot(critical_line_axis, critical_line, ls = '--', c = 'black', lw = 0.5)
     plt.gca().spines['top'].set_visible(False)
     plt.gca().spines['right'].set_visible(False)
-    plt.show()
     
+    if outdir is None:
+        plt.show()
+    else:
+        outfig = outdir + '/improvement.png'
+        plt.savefig(outfig, dpi = 100, bbox_inches = 'tight')
+        print('Saved plot ',outfig)
+        
     return
