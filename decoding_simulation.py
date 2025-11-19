@@ -22,7 +22,7 @@ __version__ = 1.0
 
 def compute_chunk_optimized(args):
     """Optimized worker that caches tuning curves per dtheta"""
-    chunk_indices, config, N_theta_int = args
+    chunk_indices, config, N_theta_int, mode = args
     
     theta_support = np.linspace(0, 2*np.pi, N_theta_int)
     
@@ -42,6 +42,8 @@ def compute_chunk_optimized(args):
             local_config = copy.deepcopy(config)
             local_config['center_shift'] = dtheta
             local_config['alpha'] = 0.0
+            local_config['rho']   = mode
+            
             system = NeuralSystem(local_config, N_trial=local_config['N'])
             
             mu_1, mu_2 = np.vectorize(system.mu[0]), np.vectorize(system.mu[1])
@@ -92,7 +94,7 @@ def compute_signal_quantities_parallel(N_theta_int, n_processes=None, chunk_size
     chunks = [all_indices[i:i + chunk_size] 
               for i in range(0, len(all_indices), chunk_size)]
     
-    args_list = [(chunk, config, N_theta_int) for chunk in chunks]
+    args_list = [(chunk, config, N_theta_int, args.mode) for chunk in chunks]
     
     # Initialize outputs
     tuning_curve_matrix = np.zeros((N_rho_s, 2, N_theta_int))
@@ -268,7 +270,6 @@ def compute_bayesan_extimate_gpu_in_batches(response_file, results_file, key, re
                                                )
              cp.get_default_memory_pool().free_all_blocks()
        
-       print('saving results ', theta_ext.shape )
        save_results_hdf5( { results_key  : theta_ext  }, results_file, silent_mode = True, attrs = file_attrs)
  
     cp.get_default_memory_pool().free_all_blocks()
@@ -350,6 +351,7 @@ def bayesian_decoder(args):
 
     save_results_hdf5({results_key: extimate}, results_file, attrs = attrs, silent_mode=True)
     return 
+
 def compute_bayesan_extimate_cpu_in_batches(response_file, results_file, key, results_key, mu, inv_sigma, log_det, batch_size = 50, file_attrs = None , debug_mode = False):
         
     with h5py.File(response_file,'r') as handle:
@@ -380,18 +382,62 @@ def compute_bayesan_extimate_cpu_in_batches(response_file, results_file, key, re
     return
 
 
+def circmean_gpu(samples, axis=None, high=2*cp.pi, low=0):
+    """
+    Compute the circular mean on GPU using CuPy
+    
+    Parameters:
+    -----------
+    samples : cp.ndarray
+        Input array (on GPU)
+    axis : int or None
+        Axis along which to compute mean
+    high : float
+        Upper bound of circular range (default: 2π)
+    low : float
+        Lower bound of circular range (default: 0)
+    
+    Returns:
+    --------
+    mean : cp.ndarray or float
+        Circular mean
+    """
+    # Convert samples to range [0, 2π]
+    samples = cp.asarray(samples)
+    
+    if high != low:
+        ang = (samples - low) * 2 * cp.pi / (high - low)
+    else:
+        ang = samples
+    
+    # Compute mean of unit vectors
+    sin_mean = cp.mean(cp.sin(ang), axis=axis)
+    cos_mean = cp.mean(cp.cos(ang), axis=axis)
+    
+    # Compute angle from mean vector
+    mean_angle = cp.arctan2(sin_mean, cos_mean)
+    
+    # Convert back to original range
+    if high != low:
+        mean_angle = mean_angle * (high - low) / (2 * cp.pi) + low
+    
+    return mean_angle
+
 def compute_RMSE( args ):
     import h5py
     from scipy.stats import circmean, circstd
-    xs, ys, theta, file, key = args 
+    
+    startx, endx, starty, endy, theta, file, key = args 
     
     with h5py.File(file,'r') as handle:
-            theta_sampling = handle[key][xs,ys,...]
-    diff = theta[None,None,None,:] - theta_sampling
-    MSE  = circmean( np.arctan2( np.sin(diff), np.cos(diff))**2, axis = 2 )    
+            theta_sampling = handle[key][startx:endx,starty:endy,...]
+
+    diff = cp.asarray( theta[None,None,None,:] - theta_sampling )
+
+    MSE  = circmean_gpu( cp.arctan2( cp.sin(diff), cp.cos(diff))**2, axis = 2 )    
     del(theta_sampling)
     gc.collect()
-    return (xs,ys,np.sqrt(MSE))
+    return (startx, endx, starty, endy, cp.asnumpy( cp.sqrt(MSE)) )
 
 def compute_RMSE_multiprocess(file, key, n_processes = None, batch_size = 20, debug_mode = False):
     import sys
@@ -402,7 +448,7 @@ def compute_RMSE_multiprocess(file, key, n_processes = None, batch_size = 20, de
     def iter_grid_batches(Nx, Ny, bx, by):
         for i in range(0, Nx, bx):
             for j in range(0, Ny, by):
-                yield slice(i, min(i+bx, Nx)), slice(j, min(j+by, Ny))
+                yield (i, min(i+bx, Nx), j, min(j+by, Ny))
 
     with h5py.File(file,'r') as handle:
         nx,ny,n_trials,n_stimuli = handle[key].shape
@@ -410,19 +456,17 @@ def compute_RMSE_multiprocess(file, key, n_processes = None, batch_size = 20, de
     theta = np.linspace(0,2*np.pi,n_stimuli) 
     RMSE  = np.empty( (nx,ny,n_stimuli)  )*np.nan
 
-    args_list = []
-    for xs, ys in iter_grid_batches(nx, ny, batch_size, batch_size):
-        args_list.append((xs, ys, theta, file, key))
-        
+    results = []
+    slices = [(startx, endx,starty, endy) for startx, endx, starty, endy in iter_grid_batches(nx, ny, batch_size, batch_size)]
+    
     print('Computing error:')
-    with Pool(processes=n_processes) as pool:
-        results = tqdm(
-                            pool.imap(compute_RMSE, args_list),
-                            total=len(args_list),
-                            desc='Computing RMSE (batched)'
-                            )
-        for xs,ys, mse in results:
-               RMSE[xs, ys, :] = mse
+    for startx, endx, starty, endy  in tqdm(slices, desc='Computing RMSE'):
+        results.append(  compute_RMSE( (startx, endx, starty, endy, theta, file, key)) )
+    
+    print('Saving results')
+    for startx, endx, starty, endy, mse in results:       
+        RMSE[startx:endx, starty:endy, :] = mse
+        
     return RMSE
 
 def arg_parser():
@@ -433,6 +477,7 @@ def arg_parser():
     parser.add_argument('--decoding_batch_size', type=int, required=False, default = 60, help="Batch size for decoding")
     parser.add_argument('--n_subsample',  type=int, required=False, default = 2,     help="Number of input angles to be skipped for each point on the signal manifold")
     parser.add_argument('--wrkdir','-w',  type=str, required=False, default = "/home/paolo/data/",   help="Workdir")
+    parser.add_argument('--mode','-m',  type=str, required=False, default = "poisson",   help="Type of covariance matrix")
     parser.add_argument('--generate_responses',action='store_true', default=False,   help="Generate and append responses to file (if it exists)")
     parser.add_argument('--decode_responses',  action='store_true', default=False,   help="Decode responses")
     parser.add_argument('--compute_error',     action='store_true', default=False,   help="Compute RMSE from decoded responses")
@@ -512,8 +557,8 @@ if __name__ == '__main__':
                                                                 file_attrs = attrs , debug_mode = args.debug)
     """Compute Decoding Error"""            
     if args.compute_error:    
-        RMSE     = compute_RMSE_multiprocess(results_file, 'theta_extimate',     n_processes = 15, batch_size = 5 , debug_mode = args.debug)
-        ind_RMSE = compute_RMSE_multiprocess(results_file, 'ind_theta_extimate', n_processes = 15, batch_size = 5, debug_mode = args.debug)
+        RMSE     = compute_RMSE_multiprocess(results_file, 'theta_extimate',     batch_size = 6 , debug_mode = args.debug)
+        ind_RMSE = compute_RMSE_multiprocess(results_file, 'ind_theta_extimate', batch_size = 6, debug_mode = args.debug)
         save_results_hdf5( {'RMSE'              : RMSE,
                             'ind_RMSE'          : ind_RMSE, 
                             'tuning_shift'      : config['center_shift'],
