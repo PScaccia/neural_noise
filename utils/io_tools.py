@@ -126,13 +126,13 @@ def save_results_hdf5(data_dict, filename, attrs = None, version = 999, silent_m
             if key not in f:
                 # Crea un dataset nuovo, abilitando la possibilità di append
                 maxshape = list(arr.shape)
-                if 'response' in key or 'theta_ext' in key:  maxshape[-2] = None  # penultimo asse estensibile
+                if 'response' in key or 'theta_ext' in key or 'cosin' in key:  maxshape[-2] = None  # penultimo asse estensibile
                 f.create_dataset(
                                     key, data=arr, maxshape=tuple(maxshape), compression="gzip"
                                 )
             else:
                 
-                if 'response' not in key and 'theta_ext' not in key:  continue  # penultimo asse estensibile
+                if 'response' not in key and 'theta_ext' not in key and'cosin' not in key:  continue  # penultimo asse estensibile
 
                 dset = f[key]
                 # Controllo di compatibilità delle dimensioni (tutti tranne ultimo asse)

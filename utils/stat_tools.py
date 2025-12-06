@@ -6,8 +6,9 @@ Created on Wed Nov 20 13:09:44 2024
 @author: paolos
 """
 import numpy as np
-import numpy as np
+import sys
 import matplotlib.pyplot as plt
+import h5py
 
 def metropolis_hastings(f, x0, num_samples, proposal_width):
     """
@@ -487,6 +488,109 @@ def read_landscape_simulation( file_list, batch_size = 100, n_workers = 1):
     
     return rho_s, delta_theta, rho_n, Imp
     
+
+
+def improvement_process_batch(batch_info, hdf5_file, error_f):
+    """
+    Process a batch of indices from first two dimensions.
+    Each process opens its own file handle.
+    """
+    from scipy.stats import circmean
+    
+    i_start, i_end, j_start, j_end = batch_info
+    
+    with h5py.File(hdf5_file, 'r') as handle:
+            # Load batch: [i_start:i_end, j_start:j_end, :, :]
+            if 'cosin' in error_f:
+                error     = handle['cosin_error'][i_start:i_end, j_start:j_end, :, :].mean(axis=-2)
+                ind_error = handle['ind_cosin_error'][i_start:i_end, 0, :, :].mean(axis=-2)         
+            elif error_f == 'rmse':
+                stimulus = np.linspace(0,2*np.pi,handle['theta_extimate'].shape[-1])
+                theta_ext = handle['theta_extimate'][i_start:i_end, j_start:j_end, :, :]
+                ind_theta_ext = handle['ind_theta_extimate'][i_start:i_end, 0, :, :]       
+                
+                diff = stimulus[None,None,None,:] - theta_ext 
+                error  = np.sqrt( circmean( np.arctan2( np.sin(diff), np.cos(diff))**2, axis = 2 )   )
+                del(diff)
+
+                ind_diff = stimulus[None,None,None,:] - ind_theta_ext 
+                ind_error  = np.sqrt( circmean( np.arctan2( np.sin(ind_diff), np.cos(ind_diff))**2, axis = 2 )    )
+                del(ind_diff)
+                                 
+            else:
+                sys.exit('Wrong error function')  
+                
+            # Compute for this batch
+            I_batch = (1 - (   error/ind_error))*100
+            
+    return (i_start, i_end, j_start, j_end), I_batch
+
+def compute_improvement(hdf5_file, error, outfile,
+                        batch_size_dim0 = 10, 
+                        batch_size_dim1 = 10,
+                        n_workers = 10):
+
+    import h5py
+    from tqdm import tqdm
+    from functools import partial
+    from multiprocessing import Pool, cpu_count
+    import numpy as np
+    from   utils.io_tools   import save_results_hdf5
+
+
+    with h5py.File(hdf5_file, 'r') as handle:
+        beta = float(handle.attrs['beta'])
+        rho_n = handle['noise_correlation'][:]
+        rho_s = compute_signal_corr_from_shift(handle['tuning_shift'][:], 'poisson')
+        if error == 'rmse':
+            shape = handle['theta_extimate'].shape            
+        elif error == 'cosin':
+            shape = handle['cosin_error'].shape
+    I = np.zeros( (shape[0], shape[1], shape[3] ) )
+
+    n_batches_0 = int(np.ceil(shape[0] / batch_size_dim0))
+    n_batches_1 = int(np.ceil(shape[1] / batch_size_dim1))
+    total_batches = n_batches_0 * n_batches_1
+    
+    print(f"Processing {total_batches} batches ({n_batches_0}x{n_batches_1}) with {n_workers} workers")
+    print(f"Batch size: ({batch_size_dim0}, {batch_size_dim1})")
+    
+    # Create all batch specifications
+    batch_list = []
+    for i in range(n_batches_0):
+        i_start = i * batch_size_dim0
+        i_end = min(i_start + batch_size_dim0, shape[0])
+        for j in range(n_batches_1):
+            j_start = j * batch_size_dim1
+            j_end = min(j_start + batch_size_dim1, shape[1])
+            batch_list.append(( i_start, i_end, j_start, j_end ))
+
+
+    # Create partial function with fixed parameters
+    process_func = partial(
+                            improvement_process_batch,
+                            hdf5_file=hdf5_file,
+                            error_f=error
+                            )
+    
+    # Process in parallel with progress bar
+    with Pool(n_workers) as pool:
+        results = list(tqdm(
+            pool.imap(process_func, batch_list),
+            total=total_batches,
+            desc="Computing Improvement",
+            unit="batch"
+        ))
+
+    for (i_start, i_end, j_start, j_end), batch_result in results:
+        I[i_start:i_end, j_start:j_end] = batch_result
+
+    save_results_hdf5( {f'{error}_improvement' : I,
+                        'signal_correlation'  : rho_s,
+                        'noise_correlation' : rho_n  
+                        }, outfile )
+
+    return
 # import sys
 #     rhos = {
 #             0.1: 0.993374161097031,

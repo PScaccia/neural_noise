@@ -13,6 +13,7 @@ import matplotlib.collections as mcoll
 import sys
 from scipy.signal import savgol_filter
 from run_decoding_simulation import save_results
+import h5py 
 
 def draw_oriented_ellipse(cov_matrix, center, ax, color, label = '' ,style = '-',lw = 5, order = 13):
 
@@ -1933,26 +1934,37 @@ def plot_improvement_landscape(hdf5_file, interp = 'none',
                                ymin = -0.5, ymax = 0.5,
                                vmin = -1,   vmax = 1,
                                plot_transition   = False,
-                               outdir = None):
+                               outdir = None, error = 'RMSE',
+                               batch_size_dim0 = 10, n_workers = 10,
+                               batch_size_dim1 = 10):
     from utils.stat_tools import compute_signal_corr_from_shift, compute_transition_line
     import h5py
-    
-    with h5py.File(hdf5_file, 'r') as handle:
-        beta = float(handle.attrs['beta'])
-        rho_n = handle['noise_correlation'][:]
-        rho_s = compute_signal_corr_from_shift(handle['tuning_shift'][:], 'poisson')
-        I = ( 1 - handle['RMSE'][:]/handle['ind_RMSE'][:])*100    
-        I = I.mean(axis=-1).transpose()
+    from tqdm import tqdm
+    from functools import partial
+    from multiprocessing import Pool, cpu_count
 
-    if plot_transition:
-        critical_line_axis, critical_line = compute_transition_line('poisson', beta, n_points = 1000)
+    with h5py.File(hdf5_file, 'r') as handle:
+        # beta = float(handle.attrs['beta'])
+        rho_n = handle['noise_correlation'][:]
+        if 'signal_correlation' in handle.keys():
+            rho_s = handle['signal_correlation'][:]
+        else:
+            rho_s = compute_signal_corr_from_shift(handle['tuning_shift'][:], 'poisson')
+        if error == 'RMSE':
+            I = ( 1 - handle['RMSE'][:]/handle['ind_RMSE'][:])*100    
+            I = I.mean(axis=-1)
+        elif error == 'cosin':
+            I = handle['cosin_improvement'][:].mean(axis=-1)
+
+    # if plot_transition:
+    #     critical_line_axis, critical_line = compute_transition_line('poisson', beta, n_points = 1000)
     
     x_unique = np.arange(-1,1,dx)
     y_unique = np.arange(-1,1,dy)
     X, Y = np.meshgrid(x_unique, y_unique)
     Z = np.full_like(X, np.nan, dtype=float)
     
-    plt.imshow(I,  extent=[rho_s.min(), rho_s.max(), rho_n.min(), rho_n.max()],
+    plt.imshow(I.transpose()[::-1],  extent=[rho_s.min(), rho_s.max(), rho_n.min(), rho_n.max()],
                 cmap ='coolwarm',vmin=vmin,vmax=vmax,
                 origin="lower", aspect="auto",interpolation=interp)
 
@@ -1979,8 +1991,7 @@ def plot_improvement_landscape(hdf5_file, interp = 'none',
     plt.axvline(0, c='black',lw=1)
     plt.ylim(ymin, ymax)
     plt.xlim(xmin, xmax)
-    if plot_transition:
-        plt.plot(critical_line_axis, critical_line, ls = '--', c = 'black', lw = 0.5)
+
     plt.gca().spines['top'].set_visible(False)
     plt.gca().spines['right'].set_visible(False)
     
