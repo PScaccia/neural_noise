@@ -126,8 +126,8 @@ class NeuralSystem(object):
         for k,i in parameters.items():
             self.__dict__[k] = i
         self.N_trial    = int(N_trial)
-        self.var_stim_dependence  = True if self.rho in ['info-limiting', 'info-limiting_det','adaptive','adaptive_det','poisson','poisson_det','experimental'] else False
-        self.corr_stim_dependence = True if self.rho in ['info-limiting','info-limiting_det','adaptive','adaptive_det','experimental'] else False
+        self.var_stim_dependence  = True if self.rho in ['info-limiting', 'info-limiting_ind','info-limiting_det','adaptive','adaptive_det','poisson','poisson_det','experimental'] else False
+        self.corr_stim_dependence = True if self.rho in ['info-limiting','info-limiting_ind','info-limiting_det','adaptive','adaptive_det','experimental'] else False
         self.mode = self.rho
         
         # Define tuning curves and their gradients
@@ -148,7 +148,7 @@ class NeuralSystem(object):
                                           A = self.A, function = self.function,
                                           flatness = self.flatness) ]
 
-        if self.rho in ['adaptive','adaptive_det','poisson','poisson_det','experimental', 'info-limiting','info-limiting_det']:
+        if self.rho in ['adaptive','adaptive_det','poisson','poisson_det','experimental', 'info-limiting','info-limiting_ind', 'info-limiting_det']:
             self.update_rho( self.mode )
             
         # Define Covariance Matrix
@@ -195,25 +195,42 @@ class NeuralSystem(object):
                 elif self.mode == 'info-limiting':
                    grad = lambda  x : np.array([self.grad[0](x), self.grad[1](x)]) 
                    
-                   _sigma     = lambda x : compute_corr_matrix(  grad(x),  # Direction Max Eigenvector
-                                                                      self.compute_eigenvalues( [ self.mu[0](x), self.mu[1](x)], rho = 0.0 ),
-                                                                      )
+                   self._lambda_max = self.alpha
+                   self._det = self.beta
+                   self._lambda_min = self._det/self._lambda_max
+                   if self._lambda_max < self._lambda_min : 
+                       self._lambda_max = self._lambda_min
+                       self._lambda_min = self.alpha
+                       
+                   self.sigma      = lambda x : np.array( [[  self._lambda_max*(self.grad[0](x)**2)  + self._lambda_min*(self.grad[1](x)**2)  ,  (self._lambda_max - self._lambda_min)*self.grad[0](x)*self.grad[1](x)     ],
+                                                           [  (self._lambda_max - self._lambda_min)*self.grad[0](x)*self.grad[1](x) ,    self._lambda_max*(self.grad[1](x)**2)  + self._lambda_min*(self.grad[0](x)**2)]])/(np.linalg.norm(grad(x))**2)
+                       
                    
-                   _gamma          = lambda x : (self.grad[0](x)/self.grad[1](x))**2 + (self.grad[1](x)/self.grad[0](x))**2
-                   _scaling_factor = lambda x : 1 + self.alpha * (np.abs(np.prod(grad(x)))/ grad(x).dot(grad(x))) * (np.sqrt(  (self.mu[0](x)**2+self.mu[1](x)**2) + self.mu[0](x)*self.mu[1](x) * _gamma(x) ) / (self.mu[0](x) + self.mu[1](x)) ) 
-                   self.sigma      = lambda x : ( _sigma(x) + (self.alpha*np.sqrt(_sigma(x)[0,0]*_sigma(x)[1,1])*np.outer(grad(x), grad(x)))/(grad(x).dot(grad(x))))/_scaling_factor(x)
                    
+                elif self.mode == 'info-limiting_ind':
+                   grad = lambda  x : np.array([self.grad[0](x), self.grad[1](x)]) 
                    
+                   self._lambda_max = self.alpha
+                   self._det = self.beta
+                   self._lambda_min = self._det/self._lambda_max
+                   
+                   self.sigma      = lambda x : np.array( [[  self._lambda_max*(self.grad[0](x)**2)  + self._lambda_min*(self.grad[1](x)**2)  , 0   ],
+                                                           [  0 ,    self._lambda_max*(self.grad[1](x)**2)  + self._lambda_min*(self.grad[0](x)**2)]])/(np.linalg.norm(grad(x))**2)
+                       
+
                 elif self.mode == 'info-limiting_det':
                    grad = lambda  x : np.array([self.grad[0](x), self.grad[1](x)]) 
                    
-                   _sigma     = lambda x : compute_corr_matrix(  grad(x),  # Direction Max Eigenvector
-                                                                      self.compute_eigenvalues( [ self.mu[0](x), self.mu[1](x)], rho = 0.0 ),
-                                                                      )
                    
-                   _gamma          = lambda x : (self.grad[0](x)/self.grad[1](x))**2 + (self.grad[1](x)/self.grad[0](x))**2
-                   _scaling_factor = lambda x : np.sqrt( 1 + self.alpha * (np.abs(np.prod(grad(x)))/ grad(x).dot(grad(x))) * (np.sqrt(  (self.mu[0](x)**2+self.mu[1](x)**2) + self.mu[0](x)*self.mu[1](x) * _gamma(x) ) / max( self.mu[0](x),self.mu[1](x)) ) )
-                   self.sigma      = lambda x: ( _sigma(x) + (self.alpha*np.sqrt(_sigma(x)[0,0]*_sigma(x)[1,1])*np.outer(grad(x), grad(x)))/(grad(x).dot(grad(x))))/_scaling_factor(x)
+                   
+                   self._gamma = lambda x :(self.grad[1](x)/self.grad[0](x))**2 + (self.grad[0](x)/self.grad[1](x))**2
+                                              
+                   self._scale_factor = lambda x : np.sqrt( self.beta*( self._gamma(x) + 2 ) /( (self.beta/self.alpha)**2 + (self.alpha)**2 + self.beta*self._gamma(x) ) )
+                   self._lambda_max = lambda x: self._scale_factor(x)*self.alpha
+                   self._lambda_min = lambda x: self._scale_factor(x)*self.beta/self.alpha
+                   
+                   self.sigma      = lambda x : np.array( [[  self._lambda_max(x)*(self.grad[0](x)**2)  + self._lambda_min(x)*(self.grad[1](x)**2)  , 0   ],
+                                                           [  0 ,    self._lambda_max(x)*(self.grad[1](x)**2)  + self._lambda_min(x)*(self.grad[0](x)**2)]])/(np.linalg.norm(grad(x))**2)
 
                 elif self.mode == 'adaptive_det':
                    # Case with stim-dependent Variance AND correation
@@ -247,7 +264,7 @@ class NeuralSystem(object):
         return            
     
     def update_rho(self, mode):
-        if mode in ['adaptive','adaptive_det','info-limiting','info-limiting_det']:
+        if mode in ['adaptive','adaptive_det','info-limiting','info-limiting_ind','info-limiting_det']:
             self.rho = lambda x : self.alpha + x - x
         elif mode in ['poisson','poisson_det']:
             self.rho = lambda x : self.alpha + x - x

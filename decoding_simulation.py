@@ -48,7 +48,7 @@ def compute_chunk_optimized(args):
 
             # Compare info-limiting model with independent poisson-like model
             if config['rho'] in ['info-limiting', 'info-limiting_det']:
-                local_config['rho'] = 'poisson'            
+                local_config['rho'] = 'info-limiting_ind'            
             system = NeuralSystem(local_config, N_trial=local_config['N'])
             mu_1, mu_2 = np.vectorize(system.mu[0]), np.vectorize(system.mu[1])
             tuning_curve = np.array([mu_1(theta_support), mu_2(theta_support)])
