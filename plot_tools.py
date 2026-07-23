@@ -27,7 +27,7 @@ def draw_oriented_ellipse(cov_matrix, center, ax, color, label = '' ,style = '-'
     ax.add_patch(ell)
     return width/2, height/2, np.deg2rad(angle)
 
-def draw_comparison(system_corr, system_ind, ax , t, lw = 5, ms = 500,color1 = 'darkolivegreen', color2 = 'goldenrod') :
+def draw_comparison(system_corr, system_ind, ax , t, lw = 3, ms = 500,color1 = 'darkolivegreen', color2 = 'goldenrod') :
     draw_oriented_ellipse( system_corr.sigma(t), [system_corr.mu[0](t), system_corr.mu[1](t)], ax,color=color1,lw=lw,order = 13)
     draw_oriented_ellipse( system_ind.sigma(t), [system_corr.mu[0](t), system_corr.mu[1](t)], ax,color=color2,lw=lw,order = 12, style ='--')
     ax.scatter(system_corr.mu[0](t), system_corr.mu[1](t), s = ms, marker='o',color=color1,zorder = 13)
@@ -184,7 +184,9 @@ def plot_simulation_single_panel( system, stimolus, plot_gradient = False, E = N
             
 
         norm=plt.Normalize(Emin, Emax)
+        print(len(mu1), len(mu2))
         segments = make_segments(mu1, mu2)
+
         if E.size != len(segments)+1: 
             print("Warning! Color array has different size then segments' array")
         
@@ -243,7 +245,7 @@ def plot_simulation_single_panel( system, stimolus, plot_gradient = False, E = N
     ax.set_xlim(xmin, xmax)
     ax.set_ylim(ymin, ymax)
     ax.set_xlabel('Response Cell A', size=label_size)
-    ax.set_ylabel('Responce Cell B', size=label_size)
+    ax.set_ylabel('Response Cell B', size=label_size)
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
     ax.spines['left'].set_linewidth(axes_width)
@@ -871,20 +873,26 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
 
     #<----------------------------- FIRST PANEL
     if not skip_panelA:
+        labelfont = {'fontname':'Arial'}
+
         # Create figure with 3 panels
-        fig, axes = plt.subplots(2, 2, figsize=(6, 6))
+        fig, axes = plt.subplots(2,3, figsize=(8, 6))
         label_size = 18
-        dx = 3 if not fix_det else 4
+        dx = 3 
+        #if not fix_det else 4
+        high_corr = 0.85
+        low_corr  = 0.35
 
         a = np.array([1, 6]).astype(float)
         b = np.array([3, 4]).astype(float)
         center = 0.5*(a+b)
         color1 = 'darkolivegreen'
         color2 = 'goldenrod'
-        rho = 0.85
+        rho = high_corr
         theta = np.pi/2
         Rotation = np.array([[np.cos(theta),-np.sin(theta)],
                              [np.sin(theta),np.cos(theta)]])
+        
         a -= center
         b -= center
         a = Rotation@a
@@ -902,13 +910,18 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
         ax.set_xlabel('', size=20)
-        ax.set_ylabel('Responce Cell B', size=label_size)
+        ax.set_ylabel('Response Cell B', size=label_size, **labelfont )
         ax.set_xticklabels([])
         ax.set_yticklabels([])
-        ax.set_title(r"$\theta = 45°$",size = 15)
+        ax.set_title(r"$\theta = 45°$",size = 15,**labelfont )
         ax.set_xlim(-dx, dx)
         ax.set_ylim(-dx, dx)
-        
+        if fix_det:
+            ax.set_xlim(-dx-0.35, dx+0.35)
+            ax.set_ylim(-dx-0.35, dx+0.35)
+            
+        rho = low_corr
+        Sigma_rho = np.array([[V1,rho*np.sqrt(V1*V2)], [rho*np.sqrt(V1*V2), V2]])
         theta = -np.deg2rad(25)
         ax = axes[0][1]
         Rotation = np.array([[np.cos(theta),-np.sin(theta)],[np.sin(theta),np.cos(theta)]])
@@ -926,11 +939,39 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
         ax.set_ylabel('', size=20)
         ax.set_xlim(-6.6,-0.43)
         ax.set_ylim(1.2,7.37)
-        ax.set_title(r"$\theta = 20°$",size = 15)
+        ax.set_title(r"$\theta = 20°$" + "\n low correlation",size = 15,**labelfont )
         ax.set_xticklabels([])
         ax.set_yticklabels([])        
         ax.set_xlim(-dx-0.05,dx-0.05)
         ax.set_ylim(-dx+0.2,dx+0.2)
+        
+        
+        # Strong Correlation | Negative Signal Correlation
+        rho = high_corr
+        ax = axes[0][2]
+        Sigma_rho = np.array([[V1,rho*np.sqrt(V1*V2)], [rho*np.sqrt(V1*V2), V2]])
+        if fix_det:  Sigma_rho /= np.sqrt((1-(rho**2)))
+        draw_oriented_ellipse( Sigma_rho, a, ax, color=color1, lw=3, order = 13)
+        draw_oriented_ellipse( Sigma,     a, ax, color=color2, lw=3, order = 12, style ='--')
+        draw_oriented_ellipse( Sigma_rho, b, ax, color=color1, lw=3, order = 13)
+        draw_oriented_ellipse( Sigma,     b, ax, color=color2, lw=3, order = 12, style ='--')
+        ax.scatter(a[0], a[1], color=color1, label='State A Mean',zorder=13)
+        ax.scatter(b[0], b[1], color=color1, label='State B Mean',zorder=13)
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.set_xlabel('', size=20)
+        ax.set_ylabel('', size=20)
+        ax.set_xlim(-6.6,-0.43)
+        ax.set_ylim(1.2,7.37)
+        ax.set_title(r"$\theta = 20°$" + "\n high correlation",size = 15,**labelfont )
+        ax.set_xticklabels([])
+        ax.set_yticklabels([])        
+        ax.set_xlim(-dx-0.05,dx-0.05)
+        ax.set_ylim(-dx+0.2,dx+0.2)
+        if fix_det:
+            ax.set_xlim(-dx-0.6,dx+0.55)
+            ax.set_ylim(-dx-0.35,dx+0.35)
+
         
         a = np.array([1, 6]).astype(float)
         b = np.array([3, 4]).astype(float) 
@@ -942,6 +983,9 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
         print('det:',np.linalg.det(Sigma_rho), np.linalg.det(Sigma))
         print('tr:', np.trace(Sigma_rho), np.trace(Sigma))
 
+        rho = high_corr
+        Sigma_rho = np.array([[V1,rho*np.sqrt(V1*V2)], [rho*np.sqrt(V1*V2), V2]])
+
         draw_oriented_ellipse( Sigma_rho, a, ax,color=color1,lw=3,order = 13)
         draw_oriented_ellipse( Sigma, a, ax,color=color2,lw=3, order = 12, style ='--')
         draw_oriented_ellipse( Sigma_rho, b, ax,color=color1,lw=3,order = 13)
@@ -950,13 +994,20 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
         ax.scatter(b[0], b[1], color=color1, label='State B Mean',zorder=13)
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
-        ax.set_xlabel('Response Cell A', size=label_size)
-        ax.set_ylabel('Responce Cell B', size=label_size)
+        ax.set_xlabel('Response Cell A', size=label_size,**labelfont )
+        ax.set_ylabel('Response Cell B', size=label_size,**labelfont )
         ax.set_xticklabels([])
         ax.set_yticklabels([])
-        ax.set_title(r"$\theta = -45°$",size = 15)
+        ax.set_title(r"$\theta = -45°$",size = 15,**labelfont )
         ax.set_xlim(-dx,dx)
         ax.set_ylim(-dx,dx)
+        if fix_det:
+            ax.set_xlim(-dx-0.2,dx-0.2)
+            ax.set_ylim(-dx+0.4,dx+0.4)
+
+
+        rho = low_corr
+        Sigma_rho = np.array([[V1,rho*np.sqrt(V1*V2)], [rho*np.sqrt(V1*V2), V2]])
 
         a = np.array([1, 6]).astype(float)
         b = np.array([3, 4]).astype(float) 
@@ -975,15 +1026,43 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
         ax.scatter(b[0], b[1], color=color1, label='State B Mean',zorder=13)
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
-        ax.set_xlabel('Response Cell A', size=label_size)
+        ax.set_xlabel('Response Cell A', size=label_size,**labelfont )
         ax.set_ylabel('', size=20)
         ax.set_xticklabels([])
         ax.set_yticklabels([])
-        ax.set_title(r"$\theta = -20°$",size = 15)
+        ax.set_title(r"$\theta = -20°$" + "\n low correlation",size = 15,**labelfont )
         ax.set_xlim(-dx-0.05,dx-0.05)
         ax.set_ylim(-dx+0.2,dx+0.2)
+        if fix_det:
+            ax.set_xlim(-dx-0.2,dx-0.2)
+            ax.set_ylim(-dx+0.4,dx+0.4)
 
+
+
+        # Strong Correlation | Negative Signal Correlation
+        ax = axes[1][2]
+        rho = high_corr
+        Sigma_rho = np.array([[V1,rho*np.sqrt(V1*V2)], [rho*np.sqrt(V1*V2), V2]])
+        if fix_det:  Sigma_rho /= np.sqrt((1-(rho**2)))
+        draw_oriented_ellipse( Sigma_rho, a, ax,color=color1,lw=3,order = 13)
+        draw_oriented_ellipse( Sigma, a, ax,color=color2,lw=3, order = 12, style ='--')
+        draw_oriented_ellipse( Sigma_rho, b, ax,color=color1,lw=3,order = 13)
+        draw_oriented_ellipse( Sigma, b, ax,color=color2,lw=3, order = 12, style ='--')
+        ax.scatter(a[0], a[1], color=color1, label='State A Mean',zorder=13)
+        ax.scatter(b[0], b[1], color=color1, label='State B Mean',zorder=13)
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.set_xlabel('Response Cell A', size=label_size,**labelfont )
+        ax.set_ylabel('', size=20)
+        ax.set_xticklabels([])
+        ax.set_yticklabels([])
+        ax.set_title(r"$\theta = -20°$"+ "\n high correlation",size = 15,**labelfont )
+        ax.set_xlim(-dx-0.05,dx-0.05)
+        ax.set_ylim(-dx+0.2,dx+0.2)
+        
+        
         # Save first panel
+        plt.tight_layout()
         OUTFIG = f"{OUTDIR}/figure1_panelA.pdf"
         plt.savefig(OUTFIG, dpi = 300, bbox_inches = 'tight')
         print("Saved plot ",OUTFIG)
@@ -1007,10 +1086,14 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
         if not fix_det:
                xline =  np.linspace(-np.pi/4,np.pi/4,1000)
                ax.plot( np.rad2deg(xline), np.sin(2*xline), ls ='--',c='black', lw=0.5)
+        else:
+               xline =  np.linspace(-np.pi/4,np.pi/4,1000)
+               ax.plot( np.rad2deg(xline), 2*np.sin(2*xline)/(1 + (np.sin(2*xline)**2) ), ls ='--',c='black', lw=0.5)
+            
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
-        plt.xticks(np.linspace(-45,45,7),size=15)
-        ax.set_xticklabels([ str(int(x))+'°' for x in np.linspace(-45,45,7)])
+        plt.xticks( np.linspace(-45,45,7),size=15 )
+        ax.set_xticklabels([ str(int(x ))+'°' for x in  np.linspace(-45,45,7) - 45])
         plt.yticks(size=15)
         plt.tight_layout()
         
@@ -1024,13 +1107,13 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
 
     else:
         pass
-    
+    labelfont = {'fontname':'Arial'}
+
     # <------------------------------- THIRD PANEL   
     if not skip_panelC:
         fig, ax = plt.subplots(1,1, figsize=(8, 6))
 
         N = 2000
-        cmap = cm.coolwarm
         norm = mcolors.Normalize(vmin=-3, vmax=3)    
         LINEWIDTH = 5
         V1 = V2 = 20
@@ -1041,7 +1124,11 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
         rhos = np.linspace(-1.0, 1.0,2*N+1)[1:-1]
         Sigma = np.array([[V1,0], [0, V2]])
         compute_pc = lambda x: 0.5*(1+erf(np.sqrt(d_prime_squared(b-a, x))/(2*np.sqrt(2))))
-        for dtheta in [10, 20, 30, 45,]:
+
+        norm = mcolors.Normalize(vmin = 5, vmax = 50)
+        cmap = cm.get_cmap('Oranges')
+
+        for dtheta in [5, 10, 15, 20, 25, 30, 35,40, 45,]:
             theta = np.deg2rad(dtheta)
             Rotation = np.array([[np.cos(theta),-np.sin(theta)],[np.sin(theta),np.cos(theta)]])
             a = Rotation@a0
@@ -1060,21 +1147,27 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
             pc_corr = np.array(list(map(compute_pc,Sigma_correlated)))
             pc_synergy = ((pc_corr/pc)-1)*100
             
-            points   = np.array([rhos, pc_synergy]).T.reshape(-1, 1, 2)
-            segments = np.concatenate([points[:-1], points[1:]], axis=1)
-            lc = LineCollection(segments, cmap=cmap, norm=norm, linewidth=6, zorder = 13)
-            lc.set_array(pc_synergy)
-            ax.add_collection(lc)
-            sm = cm.ScalarMappable(cmap=cmap, norm=norm)
-            sm.set_array([])
+            plt.plot(rhos, pc_synergy, color = cmap(norm(dtheta)), lw = 4, label = str( dtheta - 45) + r'$\degree$' )
+            
+            # points   = np.array([rhos, pc_synergy]).T.reshape(-1, 1, 2)
+            # segments = np.concatenate([points[:-1], points[1:]], axis=1)
+            # lc = LineCollection(segments, cmap=cmap, norm=norm, linewidth=4, zorder = 13)
+            # lc.set_array(pc_synergy)
+            # ax.add_collection(lc)
+
+            # sm = cm.ScalarMappable(cmap=cmap, norm=norm)
+            # sm.set_array([])
+            
         # fig.colorbar(sm, ax=ax, orientation='vertical', label='$y^2$')
             # for x,y in zip(rhos, pc_synergy ):
             #     ax.scatter(x,y , color=cmap(norm(y)))
 
         plt.xlabel("Noise Correlation", size = 18)
-        plt.axhline(0,c='black',zorder = 12, lw=0.5)
-        plt.axvline(0,c='black',zorder = 12, lw=0.5)
+        plt.axhline(0,c='black',zorder = 10, lw=0.5)
+        plt.axvline(0,c='black',zorder = 10, lw=0.5)
         plt.xlim(0,1.2)
+        leg = plt.legend(title = r'$\theta$', frameon=False, prop={'size':15} , bbox_to_anchor=(1.05, 1.05))
+        leg.get_title().set_fontsize('18')
         if fix_det:    
             plt.ylim(-18,10)
         else:
@@ -1082,6 +1175,11 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
         
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
+        ax.spines['left'].set_linewidth(1.2)
+        ax.spines['bottom'].set_linewidth(1.2)
+        plt.xticks(fontsize=16)
+        ax.tick_params(width=1.2, size = 5)
+        plt.yticks(fontsize=16)
 
         # Save third panel
         OUTFIG = f"{OUTDIR}/figure1_panelC.pdf"
@@ -1266,73 +1364,130 @@ def paper_plot_figure_1( OUTDIR = "/home/paolos/Pictures/decoding/paper",
         pass
     
     if not skip_panelF:
-        if any([ alpha_decoding is None, beta_decoding is None, imp_decoding is None]):
-            data = dict( np.load(data_decoding) )
-            alpha_decoding, beta_decoding, imp_decoding,_ = compute_innovation(data)
-            del(data)
-        
+
         fig, ax = plt.subplots(1,1, figsize=(8, 6))
         cmap = cm.coolwarm
         norm = mcolors.Normalize(vmin=-5, vmax = 5)
-        def moving_average(data, window_size=5):
-            window = np.ones(window_size) / window_size
-            return np.convolve(data, window, mode='valid')
-
-        for b in np.unique(beta_decoding):
+        
+        wrkdir = '/home/paolo/data/'
+        file_list = ['bayesian_extimate_beta0p5full.h5',
+                     'bayesian_extimate_beta0p6.h5',
+                     'bayesian_extimate_beta0p7.h5',
+                     # 'bayesian_extimate_beta0p8.h5',
+                     'bayesian_extimate_beta1.h5',                     
+                     #  'bayesian_extimate_beta1p2.h5',
+                     # 'bayesian_extimate_beta1p5.h5',
+                     # 'bayesian_extimate_beta2.h5',
+                     # 'bayesian_extimate_beta3.h5'
+                     ]        
+        x = []
+        y = []
+        
+        for file in file_list:
+            with h5py.File(wrkdir +file, 'r') as handle:
+                error     = handle['cosin_error'][:]
+                ind_error = handle['ind_cosin_error'][:]
+                nc        = handle['noise_correlation'][:]
+                beta      = file.split('_beta')[-1].replace('.h5','').replace('p','.').replace('full','')
             
-            ind = beta_decoding == b
-            x = alpha_decoding[ind]
-            y = imp_decoding[ind].mean(axis=1)
-
-            sort_ind =np.argsort(x)
-            x = x[sort_ind]
-            y = y[sort_ind]
-
-            if b == 1:
-                m = 8
-                y = np.append( moving_average(y[x<0.65], window_size = m), y[x>=0.65])
-                x = np.append( x[x<0.65][(m-1)//2:-(m-1)//2], x[x>=0.65])
-            # elif b == 2:
-            #     m = 5
-            #     t = 0.9
-            #     y = np.append( savgol_filter(y[x<t], 9, 2), y[x>=t])
-                # x = np.append( x[x<t][(m-1)//2:-(m-1)//2], x[x>=t])
-            else:
-                m = 5
-                y = moving_average(y, window_size = m)
-                x = x[(m-1)//2:-(m-1)//2]
-                
-            x = np.append(0,x)
-            y = np.append(0,y)
-            
-            xline = np.linspace(0,alpha_decoding.max(),120)
-            spline = make_interp_spline(x,y, k=2)  # k=3 means cubic spline
-            y_smooth = spline(xline)
-            
-            points   = np.array([xline, y_smooth]).T.reshape(-1, 1, 2)
+            I = (1 - (   error.mean(axis=-2)/ind_error.mean(axis=-2)))*100
+            y_smooth = I.mean(axis=-1).flatten()[::-1]
+            y_smooth = savgol_filter(y_smooth, 6, 2)
+            # plt.plot(nc,y_smooth, label = str(beta), zorder = 13)
+            x.append(nc)
+            y.append(y_smooth)
+            points   = np.array([nc, y_smooth]).T.reshape(-1, 1, 2)
             segments = np.concatenate([points[:-1], points[1:]], axis=1)
             lc = LineCollection(segments, cmap=cmap, norm=norm, linewidth=6, zorder = 13)
             lc.set_array(y_smooth)
             ax.add_collection(lc)
             sm = cm.ScalarMappable(cmap=cmap, norm=norm)
             sm.set_array([])
-            ax.plot(xline,y_smooth)
-            
+
+        plt.xlim(0,1)
+        plt.ylim(-6,12)
         plt.xlabel("Noise Correlation", size = 18)
-        plt.ylabel("Improvement in RMSE [%]", size = 18)
-        plt.axhline(0,lw=1,c='black')
+        plt.ylabel("Decoding Improvement [%]", size = 18)
         plt.axhline(0,c='black',zorder = 12, lw=0.5)
         plt.axvline(0,c='black',zorder = 12, lw=0.5)
-        plt.xlim(0,1)
-        plt.ylim(-5,15)
-
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
-        ax.set_xlim(0,1)
+        plt.xticks(size=20)
+        plt.yticks(size=20)
+        ax.spines['left'].set_linewidth(2)
+        ax.spines['bottom'].set_linewidth(2)
 
-        OUTFIG = f"{OUTDIR}/figure1_panelF.pdf"
-        plt.savefig(OUTFIG, dpi = 300, bbox_inches = 'tight')
+        OUTFIG = f"{OUTDIR}/figure1_panelF.png"
+        plt.savefig(OUTFIG, dpi = 1000, bbox_inches = 'tight')
         print("Saved plot ",OUTFIG)
+            
+        # if any([ alpha_decoding is None, beta_decoding is None, imp_decoding is None]):
+        #     data = dict( np.load(data_decoding) )
+        #     alpha_decoding, beta_decoding, imp_decoding,_ = compute_innovation(data)
+        #     del(data)
+        
+        # fig, ax = plt.subplots(1,1, figsize=(8, 6))
+        # cmap = cm.coolwarm
+        # norm = mcolors.Normalize(vmin=-5, vmax = 5)
+        # def moving_average(data, window_size=5):
+        #     window = np.ones(window_size) / window_size
+        #     return np.convolve(data, window, mode='valid')
+
+        # for b in np.unique(beta_decoding):
+            
+        #     ind = beta_decoding == b
+        #     x = alpha_decoding[ind]
+        #     y = imp_decoding[ind].mean(axis=1)
+
+        #     sort_ind =np.argsort(x)
+        #     x = x[sort_ind]
+        #     y = y[sort_ind]
+
+        #     if b == 1:
+        #         m = 8
+        #         y = np.append( moving_average(y[x<0.65], window_size = m), y[x>=0.65])
+        #         x = np.append( x[x<0.65][(m-1)//2:-(m-1)//2], x[x>=0.65])
+        #     # elif b == 2:
+        #     #     m = 5
+        #     #     t = 0.9
+        #     #     y = np.append( savgol_filter(y[x<t], 9, 2), y[x>=t])
+        #         # x = np.append( x[x<t][(m-1)//2:-(m-1)//2], x[x>=t])
+        #     else:
+        #         m = 5
+        #         y = moving_average(y, window_size = m)
+        #         x = x[(m-1)//2:-(m-1)//2]
+                
+        #     x = np.append(0,x)
+        #     y = np.append(0,y)
+            
+        #     xline = np.linspace(0,alpha_decoding.max(),120)
+        #     spline = make_interp_spline(x,y, k=2)  # k=3 means cubic spline
+        #     y_smooth = spline(xline)
+            
+        #     points   = np.array([xline, y_smooth]).T.reshape(-1, 1, 2)
+        #     segments = np.concatenate([points[:-1], points[1:]], axis=1)
+        #     lc = LineCollection(segments, cmap=cmap, norm=norm, linewidth=6, zorder = 13)
+        #     lc.set_array(y_smooth)
+        #     ax.add_collection(lc)
+        #     sm = cm.ScalarMappable(cmap=cmap, norm=norm)
+        #     sm.set_array([])
+        #     ax.plot(xline,y_smooth)
+            
+        # plt.xlabel("Noise Correlation", size = 18)
+        # plt.ylabel("Improvement in RMSE [%]", size = 18)
+        # plt.axhline(0,lw=1,c='black')
+        # plt.axhline(0,c='black',zorder = 12, lw=0.5)
+        # plt.axvline(0,c='black',zorder = 12, lw=0.5)
+        # plt.xlim(0,1)
+        # plt.ylim(-5,15)
+
+        # ax.spines['top'].set_visible(False)
+        # ax.spines['right'].set_visible(False)
+        # ax.set_xlim(0,1)
+
+        # OUTFIG = f"{OUTDIR}/figure1_panelF.pdf"
+        # plt.savefig(OUTFIG, dpi = 300, bbox_inches = 'tight')
+        # print("Saved plot ",OUTFIG)
 
     else:
         pass
@@ -1392,6 +1547,7 @@ def paper_plot_figure_2( system, improvement_list = [], file = None,
     else:
         pass
         pass
+    
     TARGET_STIM = np.pi*3/4 - 0.3
     INDX = np.argmin( abs(THETA - TARGET_STIM))
 
@@ -1411,19 +1567,27 @@ def paper_plot_figure_2( system, improvement_list = [], file = None,
                     'N'             : 1000,
                     'int_step'      : 100
                     }
+
         system     = NeuralSystem(config)
         system_ind = NeuralSystem(config)
         system_ind.alpha = 0.0
         system_ind.generate_variance_matrix()
+        
         if len(improvement_list) == 0:
-            sys.exit("Computatation of improvement not implemented yet!")
-        else:
-            for i, color_gradient in enumerate(improvement_list):
+            files = ['/home/paolo/data/cosin_improvement_low_SNR_low_NC.txt',
+                     '/home/paolo/data/cosin_improvement_high_SNR_low_NC.txt',
+                     '/home/paolo/data/cosin_improvement_low_SNR_high_NC.txt',
+                     '/home/paolo/data/cosin_improvement_high_SNR_high_NC.txt']
+            for file in files:
+                improvement_list.append( np.loadtxt(file) )
+                
+            # sys.exit("Computatation of improvement not implemented yet!")
+        for i, color_gradient in enumerate(improvement_list):
                 
                 if i == 0:
                     system.beta     = 2
                     system.alpha    = 0.2
-                    system_ind.beta = 2
+                    system_ind.beta = system.beta
                     system.generate_variance_matrix()
                     system_ind.generate_variance_matrix()
                     
@@ -1437,7 +1601,7 @@ def paper_plot_figure_2( system, improvement_list = [], file = None,
                 elif i == 2:
                     system.beta     = 2
                     system.alpha    = 0.95
-                    system_ind.beta = 2
+                    system_ind.beta = system.beta
                     system.generate_variance_matrix()
                     system_ind.generate_variance_matrix()
                     
@@ -1451,10 +1615,10 @@ def paper_plot_figure_2( system, improvement_list = [], file = None,
                 else:
                     sys.exit("Oh oh...something wrong happened!")
                     
-                plot_simulation_single_panel(system, [], E = color_gradient, 
+                plot_simulation_single_panel(system, [], E = color_gradient, theta_support = np.linspace(0,2*np.pi,color_gradient.size),
                                              color_label = "Decoding Improvement [%]",
                                              fig_size = (10,10), plot_ticks = False)
-                draw_comparison(system, system_ind, plt.gca(), TARGET_STIM,e = 4)
+                draw_comparison(system, system_ind, plt.gca(), TARGET_STIM, lw = 4)
                 # plt.scatter(system.mu[0](TARGET_STIM), 
                 #             system.mu[1](TARGET_STIM),
                 #             s = 500, c = 'black',
@@ -1486,7 +1650,12 @@ def paper_plot_figure_2( system, improvement_list = [], file = None,
         # data3 = dict(np.load("/home/paolos/repo/neural_noise.bkp/data/poisson_selected_paper.npz"))
                 
         # CASE1
+        data = '/home/paolo/data/bayesian_extimate_beta1.h5'
         OUTFIG = f"{OUTDIR}/figure2_errors_1.pdf"
+        with h5py.File(data, 'r') as handle:
+            error     = handle['cosin_error'][:]
+            ind_error = handle['ind_cosin_error'][:]
+        error = np.ma.masked_invalid(error)
         sampling = np.load("/home/paolos/Desktop/sampling_case1.npz")
         # theta_sampling         = data['a_0.10_b_5.00'][0]
         # theta_sampling_control = data['a_0.10_b_5.00'][1]
@@ -1677,24 +1846,28 @@ def paper_plot_figure_3( OUTDIR = "/home/paolos/Pictures/decoding/paper"):
     return
 
 def paper_plot_figure_4( OUTDIR  = "/home/paolos/Pictures/decoding/paper",
-                         mode = 'adaptive',
-                         results = "/home/paolos/repo/neural_noise/data/information-limiting.npz",
-                         a = None, R = None , b = None):
+                         WRKDIR  = '/home/paolo/data',
+                         mode    = 'info-limiting',
+                         improvement_list = None,
+                         nc               = None):
     
     from utils.stat_tools import compute_innovation
     from scipy.interpolate import make_interp_spline
     import matplotlib.colors as mcolors
     from matplotlib.collections import LineCollection
     import matplotlib.cm as cm
-
+    from   glob import glob
+    import os
+    
     fig_size = (12,6)
     fig, axes = plt.subplots(1,2, figsize=fig_size)
+    labelfont = {'fontname':'Arial'}
 
     # Panel A
-    conf = {    'label'         : 'poisson_selected',
+    conf = {
                 'rho'           : mode,
-                'alpha'         : 0.9,
-                'beta'          : 0.09,
+                'alpha'         : 0.0,
+                'beta'          : 0.12,
                 'V'             : 2,
                 'function'      : 'fvm',
                 'A'             : 0.17340510276921817,
@@ -1702,10 +1875,11 @@ def paper_plot_figure_4( OUTDIR  = "/home/paolos/Pictures/decoding/paper",
                 'flatness'      : 0.6585904840291591,
                 'b'             : 1.2731732385019432,
                 'center'        : 2.9616211149125977 - 0.21264734641020677,
-                'center_shift'  : np.pi/4,
+                'center_shift'  : 8.14068063e-01,
                 }
-    
     system     = NeuralSystem(conf)
+    
+    conf['rho'] = 'poisson'
     system_ind = NeuralSystem(conf)
     system_ind.alpha = 0
     system_ind.generate_variance_matrix()
@@ -1719,9 +1893,29 @@ def paper_plot_figure_4( OUTDIR  = "/home/paolos/Pictures/decoding/paper",
                                  axes_width = 2,
                                  tick_size  = 10, 
                                  manifold_width = 5)
+
+    if 'info-limiting' in mode:
+        conf = {
+                    'rho'           : mode,
+                    'alpha'         : 5.0,
+                    'beta'          : 0.12,
+                    'V'             : 2,
+                    'function'      : 'fvm',
+                    'A'             : 0.17340510276921817,
+                    'width'         : 0.2140327993142855,
+                    'flatness'      : 0.6585904840291591,
+                    'b'             : 1.2731732385019432,
+                    'center'        : 2.9616211149125977 - 0.21264734641020677,
+                    'center_shift'  : 8.14068063e-01,
+                    }
+        system_with_eps  = NeuralSystem(conf)
+
     
     # for t in np.linspace(0,2*np.pi,8)[1:-1]:        
-    for t in np.array([0.8975979 + 0.1 , 1.7951958 , 2.6927937-0.09 , 3.5903916 + 0.09 , 4.48798951 ,  5.38558741-0.1]):
+    # stimuli = np.array([0.8975979 + 0.1 , 1.7951958 , 2.6927937-0.09 , 3.5903916 + 0.09 , 4.48798951 ,  5.38558741-0.1]) 
+    stimuli = np.array([0.8975979 + 0.2 , 1.7951958 , np.pi-0.6 , np.pi + 0.6 , 4.48798951 ,  5.38558741-0.2]) 
+
+    for t in stimuli:
         # draw_oriented_ellipse( system.sigma(t), 
         #                       [system.mu[0](t), system.mu[1](t)],
         #                       plt.gca(),
@@ -1729,6 +1923,10 @@ def paper_plot_figure_4( OUTDIR  = "/home/paolos/Pictures/decoding/paper",
         #                       lw=5,
         #                       order = 13)
         draw_comparison(system, system_ind, ax , t, ms = 20, lw = 2)
+        if 'info-limiting' in mode:
+            draw_comparison(system_with_eps, system_ind, ax , t, ms = 20, lw = 2, color1 = 'salmon', color2 = 'none')
+
+
     ax.set_xticklabels([])
     ax.set_xlim(-2,25)
     ax.set_ylim(-2,25)
@@ -1736,87 +1934,96 @@ def paper_plot_figure_4( OUTDIR  = "/home/paolos/Pictures/decoding/paper",
     ax.set_yticklabels([])
 
 
+    from matplotlib.lines import Line2D
+    
+    legend_elements = [
+        Line2D([0], [0], color='salmon',          lw=2, label=r'$\epsilon > 0$'),
+        Line2D([0], [0], color='darkolivegreen',  lw=2, label=r'$\epsilon = 0$'),
+        Line2D([0], [0], color='goldenrod',       lw=2, label='indep.'),
+    ]
+    ax.legend(handles=legend_elements, loc='best', frameon = False)
+    
     # Panel B
+    
+    
+    if improvement_list is None:
+        improvement_list = []
+        betas = []
+        
+        result_files = glob( WRKDIR + f'/bayesian_extimate_*{mode}.h5' )
+        print(f"Found {len(result_files)} files in {WRKDIR}")
+        result_files.sort()
+        
+        for file in result_files:
+            print(f'   - Reading {os.path.basename(file)}')
+            try:    
+                with h5py.File(file, 'r') as handle:
+                        improvement_list.append( handle['cosin_improvement'][:][0,:,:].mean(axis=-1) )
+                betas.append( float( os.path.basename(file).split('_')[2].replace('beta','').replace('p','.')))
+            except Exception as e:
+                print(f'Skipped file {file}: {e}')
+                continue
+   
+    if nc is None:
+        with h5py.File(result_files[0], 'r') as handle:
+            nc = handle['noise_correlation'][:]
+
     ax   = axes[1]
-    cmap = cm.coolwarm
-    norm = mcolors.Normalize(vmin=-3, vmax = 3)
+
+    cmap = cm.PiYG
+    cmap_discrete = cmap( np.linspace(0, 1, 6))
+    norm = mcolors.Normalize(vmin=0.1, vmax=0.5)
+    norm = mcolors.Normalize(vmin=0, vmax=1.8)
+
+    f = lambda x : cmap( norm( x ))    
     
-    if any([ a is None, b is None, R is None ]):
-        # Load simulation results
-        data = dict(np.load("/home/paolos/repo/neural_noise/data/information-limiting.npz"))
-        a, b, R, _ = compute_innovation(data)
     
-    for beta in b:
-        ind = b == beta
-        x = a[ind]
-        y = R[ind].mean(axis=1)
-        
-        # if beta == 0.3:
-        #     y[x<0.26] -= 0.2
-        #     y[ np.logical_and(x<0.6,x>0.42)] -= 1.5    
-        #     y[x>0.8] += 2.1
-        #     y[x>0.95] += 4.5
-
-        # elif beta == 0.2:
-        #     y[ x<0.25 ] = np.nan
-        #     x = np.append(x,0.2)
-        #     y = np.append(y,-0.7)
-            
-        # elif beta == 0.1:
-        #    y[ [13, 15, 17, 18] ] = np.nan
-        # elif beta == 0.15:
-        #     x = np.append(x, 0.4)
-        #     y = np.append(y, -2.6)#
-        #     x = np.append(x, 0.2)
-        #     y = np.append(y, -0.42)
-
-        x = np.append(0,x)
-        y = np.append(0,y)
-        y = np.ma.masked_invalid(y)
-        x = x[~y.mask].flatten()
-        y = y[~y.mask].flatten()
-             
-        # ax.scatter(x, y, marker='+',s=20, zorder = 13)    
-
-        # y = savgol_filter(y, 5, 2)
-        sort_ind =np.argsort(x)
-        x = x[sort_ind]
-        y = y[sort_ind]
-        
-        y = np.append( savgol_filter(y[x<0.8], 11,2), y[x>=0.8])
-        
-        xline = np.linspace(0,a.max(),1000)
-        spline = make_interp_spline(x,y, k=2)  # k=3 means cubic spline
-        y_smooth = spline(xline)
-
-        points   = np.array([xline, y_smooth]).T.reshape(-1, 1, 2)
-        segments = np.concatenate([points[:-1], points[1:]], axis=1)
-        lc = LineCollection(segments, cmap=cmap, norm=norm, linewidth=6, zorder = 13)
-        lc.set_array(y_smooth)
-        ax.add_collection(lc)
-        sm = cm.ScalarMappable(cmap=cmap, norm=norm)
-        sm.set_array([])
-
-        ax.plot(xline,y_smooth)
+    cmap_discrete = np.array(list(map(f, [  0, 0.155, 0.23, 0.385, 1 ][::-1])))
+    cmap_discrete = np.array(list(map(f, betas)))
     
-    ax.set_xlabel("Noise Correlation", size = 18)
-    ax.set_ylabel("Improvement in MSE [%]", size = 18)
+    # cmap_discrete = np.array(list(map(f, [  1 , 0.34, 0.155, 0.2, 0.34, 1 ])))
+
+    # cmap_discrete = cmap_discrete[::-1]
+    for i,I in enumerate(improvement_list):
+        x = nc
+        # y = I        
+        y = savgol_filter(I[:x.size], 7, 3)
+
+        # points   = np.array([x, y]).T.reshape(-1, 1, 2)
+        # segments = np.concatenate([points[:-1], points[1:]], axis=1)
+        # lc = LineCollection(segments, cmap=cmap, norm=norm, linewidth=6, zorder = 13)
+        # lc.set_array(y)
+        # ax.add_collection(lc)
+        # sm = cm.ScalarMappable(cmap=cmap, norm=norm)
+        # sm.set_array([])
+        c = cmap_discrete[i]
+        ax.plot(x,y, color = c, lw = 6, label = i)
+    
+    
+    sm = cm.ScalarMappable(cmap=cmap, norm=norm)
+    sm.set_array([])  # required for older matplotlib versions, harmless otherwise
+    cb = fig.colorbar(sm, ax=ax, )    #fraction=0.4, pad=0.04
+    cb.set_label(label = 'SNR',size = 15, **labelfont)
+    ax.set_xlabel(r"Info-limiting correlation ($\epsilon$)", size = 18, **labelfont)
+    ax.set_ylabel("Decoding Improvement [%]", size = 18, **labelfont)
     ax.axhline(0,c='black',zorder = 12, lw=0.5)
     ax.axvline(0,c='black',zorder = 12, lw=0.5)
-    ax.set_xlim(0,1)     
-    ax.set_ylim(-10,10)
-    
+    ax.set_xlim(0,4)     
+    # ax.set_ylim(-30,25)
+    # plt.legend()
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
     ax.spines['left'].set_linewidth(2)
     ax.spines['bottom'].set_linewidth(2)
     ax.tick_params(width=2)
-    ax.set_xticks(np.arange(0,1.2,0.2))
-    ax.set_yticks(np.arange(-10,15,5))
-    ax.set_xticklabels([ "{:.1f}".format(x) for x in np.arange(0,1.2,0.2)], size = 18)
-    ax.set_yticklabels(np.arange(-10,15,5),  size = 18)
+    xticks = np.arange(0,5,1)
+    yticks = np.arange(-30,30,5)
+    ax.set_xticks(xticks)
+    ax.set_yticks(yticks)
+    ax.set_xticklabels([ "{:.1f}".format(x) for x in xticks], size = 18)
+    ax.set_yticklabels(yticks,  size = 18)
 
-    OUTFIG = f"{OUTDIR}/figure4.png"
+    OUTFIG = f"{OUTDIR}/figure4.pdf"
     plt.savefig(OUTFIG, dpi = 300, bbox_inches = 'tight')
     print("Saved plot ",OUTFIG)
     
@@ -1954,34 +2161,31 @@ def plot_improvement_landscape(hdf5_file, interp = 'none',
             I = ( 1 - handle['RMSE'][:]/handle['ind_RMSE'][:])*100    
             I = I.mean(axis=-1)
         elif error == 'cosin':
-            I = handle['cosin_improvement'][:].mean(axis=-1)
+            try:
+                I = handle['cosin_improvement2'][:].mean(axis=-1)
+            except:
+                I = handle['cosin_improvement'][:].mean(axis=-1)
 
     # if plot_transition:
     #     critical_line_axis, critical_line = compute_transition_line('poisson', beta, n_points = 1000)
     
     x_unique = np.arange(-1,1,dx)
     y_unique = np.arange(-1,1,dy)
+
+    x_unique = np.arange(0,1,dx)
+    y_unique = np.arange(0,1,dy)
+    
+    
     X, Y = np.meshgrid(x_unique, y_unique)
     Z = np.full_like(X, np.nan, dtype=float)
     
-    plt.imshow(I.transpose()[::-1],  extent=[rho_s.min(), rho_s.max(), rho_n.min(), rho_n.max()],
+    plt.imshow(I.transpose()[::-1],  extent=[
+                                              rho_s.min(), rho_s.max(), 
+                                              rho_n.min(), rho_n.max()],
+                                              # 0, 1,
+                                              # 0, 1],
                 cmap ='coolwarm',vmin=vmin,vmax=vmax,
                 origin="lower", aspect="auto",interpolation=interp)
-
-    
-    # # Fill Z with corresponding values
-    # for iy, (xrow, yrow) in enumerate(zip(X,Y)):
-    #     for ix , (x_value, y_value) in enumerate(zip(xrow,yrow)):
-    #         # ix = np.argmin( np.abs( x_unique - xi))
-    #         # iy = np.argmin( np.abs( y_unique - yi))
-    #         jx = np.where( np.abs( rho_s - x_value) <= dx*0.5)[0]
-    #         jy = np.where(np.abs(  rho_n - y_value) <= dy*0.5)[0]
-    #         if jx.size != 0 and jy.size != 0:
-    #             m = min(jx.size, jy.size)
-    #             Z[ix, iy] = I[jy[:m],jx[:m]].mean()
-    # plt.imshow(Z.transpose(), extent=[x_unique.min(), x_unique.max(), y_unique.min(), y_unique.max()],\
-    #            cmap ='coolwarm',vmin=vmin,vmax=vmax,
-    #            origin="lower", aspect="auto",interpolation=interp)
         
     cb = plt.colorbar(label="")
     cb.set_label("Decoding Improvement [%]",size = 15)
@@ -1998,8 +2202,104 @@ def plot_improvement_landscape(hdf5_file, interp = 'none',
     if outdir is None:
         plt.show()
     else:
-        outfig = outdir + '/improvement.png'
-        plt.savefig(outfig, dpi = 100, bbox_inches = 'tight')
+        outfig = outdir + '/improvement.pdf'
+        plt.savefig(outfig, dpi = 200, bbox_inches = 'tight')
         print('Saved plot ',outfig)
+        plt.clf()
         
+    return
+
+
+
+def analize_simulation(improvement_file, 
+                       target_rho_s = 0.9, 
+                       target_rho_n = 0.4,
+                       fig_size = (10,8),
+                       color_label = 'Improvement [%]',
+                       mode = 'poisson_det'):
+    
+    with h5py.File(improvement_file, 'r') as handle:
+        rho_n = handle['noise_correlation'][:]
+        if 'signal_correlation' in handle.keys():
+            rho_s = handle['signal_correlation'][:]
+        else:
+            from utils.stat_tools import compute_signal_corr_from_shift
+            rho_s = compute_signal_corr_from_shift(handle['tuning_shift'][:],mode)
+        shift = handle['tuning_shift'][:]
+        try:
+            I = handle['cosin_improvement2'][:]
+        except:
+            I = handle['cosin_improvement'][:]
+            
+    x_ind = np.argmin(np.abs( rho_s - target_rho_s  )  )
+    y_ind = np.argmin(np.abs( rho_n - target_rho_n  )  )
+    alpha = rho_n[y_ind]
+
+            
+    # Imean[i,N-j]
+    beta = int(improvement_file.split('_beta')[1][0].split('_')[0])
+    norm=plt.Normalize(-3 , 3)
+    cmap = 'coolwarm'
+    
+    config =  { 'rho'           : mode ,
+                'alpha'         : alpha,
+                'beta'          : beta,
+                'function'      : 'fvm',
+                # 'A'             : 0.17340510276921817,
+                'A'             : 0.7,
+                'width'         : 0.2140327993142855,
+                'flatness'      : 0.6585904840291591,
+                'b'             : 1.2731732385019432,
+                'center'        : 2.9616211149125977 - 0.21264734641020677,
+                'center_shift'  : shift[x_ind],
+                                # : 0.941629481
+                'N'             : 10000,
+                'int_step'      : 360,
+                }
+
+    fig, ax = plt.subplots(1,1,figsize = fig_size)
+
+    system = NeuralSystem(config, N_trial= config['N']) 
+    stimulus = np.linspace(0,2*np.pi,  I.shape[-1])
+    
+    mu1, mu2 = system.mu[0](stimulus), system.mu[1](stimulus)
+    
+    
+    color_edge = I[x_ind, rho_n.size - 1 - y_ind, :]
+    segments = make_segments(mu1, mu2)
+    lc = mcoll.LineCollection(segments, array = color_edge, cmap=cmap , norm=norm,
+                              linewidth=5, alpha=1)
+    ax.add_collection(lc)
+    cm = fig.colorbar(lc,ax=ax)
+    cm.set_label(color_label, size = 10, weight = 'bold')
+
+    plt.xlim(0, mu1.max() + 10 )
+    plt.ylim(0,mu2.max() + 10  )
+    
+    plt.show()
+    
+    with h5py.File(improvement_file, 'r') as handle:
+        cos_error = handle['cosin_error'][x_ind, rho_n.size - 1 - y_ind,...]
+        ind_cos_error = handle['ind_cosin_error'][x_ind, 0,...]
+    
+    
+    '''
+
+    system = NeuralSystem(config, N_trial=config['N'])
+    
+    config['alpha'] = 0.0
+    ind_system = NeuralSystem(config, N_trial=config['N'])
+    
+    
+    plt.plot( system.mu[0](THETA), system.mu[1](THETA))
+    
+    for t in np.arange(0,np.pi+0.05,0.05):
+        draw_comparison(system, ind_system , ax,t, lw = 3)
+    plt.show()
+
+    ''' 
+
+        
+    
+    
     return

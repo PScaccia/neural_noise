@@ -40,19 +40,29 @@ def compute_chunk_optimized(args):
         # Compute tuning curve only once per ix
         if ix not in tuning_curve_cache:
             local_config = copy.deepcopy(config)
+            
+
             local_config['center_shift'] = dtheta
             local_config['alpha'] = 0.0
             local_config['rho']   = mode
-            
+
+            # Compare info-limiting model with independent poisson-like model
+            if config['rho'] in ['info-limiting', 'info-limiting_det']:
+                local_config['rho'] = 'poisson'            
             system = NeuralSystem(local_config, N_trial=local_config['N'])
-            
             mu_1, mu_2 = np.vectorize(system.mu[0]), np.vectorize(system.mu[1])
             tuning_curve = np.array([mu_1(theta_support), mu_2(theta_support)])
             tuning_curve_cache[ix] = (system, tuning_curve)
             ind_sigma   = np.array(list(map(system.sigma, theta_support)))      
             ind_inv_cov = np.array(list(map(inv_f, ind_sigma)))
             ind_log_det = np.array(list(map(log_d_f, ind_sigma)))
+
         
+        # Restore model if for it is changed for the independent case
+        if system.mode != config['rho']:
+            local_config['rho'] = config['rho']
+            system = NeuralSystem(local_config, N_trial=local_config['N'])
+
         # Update alpha and compute variance-dependent quantities
         system.alpha = alpha
         system.generate_variance_matrix()
@@ -68,12 +78,13 @@ def compute_chunk_optimized(args):
     return results
 
 
-def compute_signal_quantities_parallel(N_theta_int, n_processes=None, chunk_size=None):
+def compute_signal_quantities_parallel(N_theta_int, beta, n_processes=None, chunk_size=None):
     """Same as before, just use compute_chunk_optimized instead of compute_chunk"""
     from config.landscape import config
     
     N_rho_s = config['center_shift'].size
     N_rho_n = config['alpha'].size
+    config['beta'] = beta
     
     # Create meshgrid
     ix_grid, iy_grid = np.meshgrid(
@@ -549,13 +560,14 @@ def arg_parser():
     parser.add_argument('--n_points_int', type=int, required=False, default = 180,   help="Number of integration points for baysian extimate")
     parser.add_argument('--decoding_batch_size', type=int, required=False, default = 60, help="Batch size for decoding")
     parser.add_argument('--n_subsample',  type=int, required=False, default = 2,     help="Number of input angles to be skipped for each point on the signal manifold")
+    parser.add_argument('--beta','-b',  type=float, required=False, default = config['beta'], help="Fano factor")
     parser.add_argument('--wrkdir','-w',  type=str, required=False, default = "/home/paolo/data/",   help="Workdir")
-    parser.add_argument('--mode','-m',  type=str, required=False, default = "poisson",   help="Type of covariance matrix")
+    parser.add_argument('--mode','-m',    type=str, required=False, default = "poisson",   help="Type of covariance matrix")
     parser.add_argument('--generate_responses',action='store_true', default=False,   help="Generate and append responses to file (if it exists)")
     parser.add_argument('--decode_responses',  action='store_true', default=False,   help="Decode responses")
     parser.add_argument('--compute_error',     action='store_true', default=False,   help="Compute RMSE from decoded responses")
     parser.add_argument('--debug',             action='store_true', default=False,   help="Debug Mode")
-    parser.add_argument('--extra_tag','-e',  type=str, required=False, default = "", help="Extra tag for the filename")
+    parser.add_argument('--extra_tag','-e',    type=str, required=False, default = "", help="Extra tag for the filename")
     parser.add_argument('--gpu',  type=int, required=False, default = 0, help="Select working GPU")
     return parser.parse_args()
 
@@ -580,14 +592,15 @@ if __name__ == '__main__':
     response_file          = os.path.join( args.wrkdir, 'responses_'+args.extra_tag+'.h5' )
     results_file           = os.path.join( args.wrkdir, 'bayesian_extimate_'+args.extra_tag+'.h5' )
     performance_file       = os.path.join( args.wrkdir, 'improvement_'+args.extra_tag+'.h5' )
-    attrs = {'beta' : config['beta'], 'n_stimuli' : n_stimuli, 'version' : __version__ }
+    attrs = {'beta' : args.beta, 'n_stimuli' : n_stimuli, 'version' : __version__ }
+    if args.debug: print('Beta: ',attrs['beta'])
     
     """Compute Signal Manifolds and Cov. Matrices"""    
     if not os.path.isfile(signal_dependency_file):
         # Compute and save Tuning Curves, Inverse Covariance Matrices and determinants
         print("Computing Signal Quantities")
         mu, ind_sigma, ind_inv_sigma, ind_log_det_sigma,\
-        sigma, inv_sigma, log_det_sigma = compute_signal_quantities_parallel(N_theta_int)    
+        sigma, inv_sigma, log_det_sigma = compute_signal_quantities_parallel(N_theta_int, args.beta)    
         results = {'mu'                : mu,
                    'ind_sigma'         : ind_sigma,
                    'ind_inv_sigma'     : ind_inv_sigma,

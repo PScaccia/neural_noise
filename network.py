@@ -8,7 +8,7 @@ Created on Thu Oct  3 10:09:15 2024
 import numpy as np
 import sys
 import progressbar
-# from scipy.misc import derivative
+from scipy.misc import derivative
 from math import sqrt
 from datetime import datetime
 import warnings
@@ -126,8 +126,8 @@ class NeuralSystem(object):
         for k,i in parameters.items():
             self.__dict__[k] = i
         self.N_trial    = int(N_trial)
-        self.var_stim_dependence  = True if self.rho in ['adaptive','adaptive_det','poisson','poisson_det','experimental'] else False
-        self.corr_stim_dependence = True if self.rho in ['adaptive','adaptive_det','experimental'] else False
+        self.var_stim_dependence  = True if self.rho in ['info-limiting', 'info-limiting_det','adaptive','adaptive_det','poisson','poisson_det','experimental'] else False
+        self.corr_stim_dependence = True if self.rho in ['info-limiting','info-limiting_det','adaptive','adaptive_det','experimental'] else False
         self.mode = self.rho
         
         # Define tuning curves and their gradients
@@ -148,7 +148,7 @@ class NeuralSystem(object):
                                           A = self.A, function = self.function,
                                           flatness = self.flatness) ]
 
-        if self.rho in ['adaptive','adaptive_det','poisson','poisson_det','experimental']:
+        if self.rho in ['adaptive','adaptive_det','poisson','poisson_det','experimental', 'info-limiting','info-limiting_det']:
             self.update_rho( self.mode )
             
         # Define Covariance Matrix
@@ -176,6 +176,7 @@ class NeuralSystem(object):
             V = lambda x : np.array( [[np.sqrt(self.beta*self.mu[0](x)), 0], 
                                       [0, np.sqrt(self.beta*self.mu[1](x))]])
                 
+    
             #C = lambda x : compute_corr_matrix(np.ones(D), self.alpha)
             if self.corr_stim_dependence:
                 
@@ -188,9 +189,31 @@ class NeuralSystem(object):
                                                                       )
 
                    # TMP version with eigenvector of the constant Sigma
-                   # self.sigma     = lambda x : compute_corr_matrix(  grad(x),  # Direction Max Eigenvector
+                   # self.sigma     = lambda x : compute*self.grad[0](x))_corr_matrix(  grad(x),  # Direction Max Eigenvector
                    #                                                   self.compute_eigenvalues( [ 1, 1] ),
                    #                                                   )
+                elif self.mode == 'info-limiting':
+                   grad = lambda  x : np.array([self.grad[0](x), self.grad[1](x)]) 
+                   
+                   _sigma     = lambda x : compute_corr_matrix(  grad(x),  # Direction Max Eigenvector
+                                                                      self.compute_eigenvalues( [ self.mu[0](x), self.mu[1](x)], rho = 0.0 ),
+                                                                      )
+                   
+                   _gamma          = lambda x : (self.grad[0](x)/self.grad[1](x))**2 + (self.grad[1](x)/self.grad[0](x))**2
+                   _scaling_factor = lambda x : 1 + self.alpha * (np.abs(np.prod(grad(x)))/ grad(x).dot(grad(x))) * (np.sqrt(  (self.mu[0](x)**2+self.mu[1](x)**2) + self.mu[0](x)*self.mu[1](x) * _gamma(x) ) / (self.mu[0](x) + self.mu[1](x)) ) 
+                   self.sigma      = lambda x : ( _sigma(x) + (self.alpha*np.sqrt(_sigma(x)[0,0]*_sigma(x)[1,1])*np.outer(grad(x), grad(x)))/(grad(x).dot(grad(x))))/_scaling_factor(x)
+                   
+                   
+                elif self.mode == 'info-limiting_det':
+                   grad = lambda  x : np.array([self.grad[0](x), self.grad[1](x)]) 
+                   
+                   _sigma     = lambda x : compute_corr_matrix(  grad(x),  # Direction Max Eigenvector
+                                                                      self.compute_eigenvalues( [ self.mu[0](x), self.mu[1](x)], rho = 0.0 ),
+                                                                      )
+                   
+                   _gamma          = lambda x : (self.grad[0](x)/self.grad[1](x))**2 + (self.grad[1](x)/self.grad[0](x))**2
+                   _scaling_factor = lambda x : np.sqrt( 1 + self.alpha * (np.abs(np.prod(grad(x)))/ grad(x).dot(grad(x))) * (np.sqrt(  (self.mu[0](x)**2+self.mu[1](x)**2) + self.mu[0](x)*self.mu[1](x) * _gamma(x) ) / max( self.mu[0](x),self.mu[1](x)) ) )
+                   self.sigma      = lambda x: ( _sigma(x) + (self.alpha*np.sqrt(_sigma(x)[0,0]*_sigma(x)[1,1])*np.outer(grad(x), grad(x)))/(grad(x).dot(grad(x))))/_scaling_factor(x)
 
                 elif self.mode == 'adaptive_det':
                    # Case with stim-dependent Variance AND correation
@@ -224,7 +247,7 @@ class NeuralSystem(object):
         return            
     
     def update_rho(self, mode):
-        if mode in ['adaptive','adaptive_det']:
+        if mode in ['adaptive','adaptive_det','info-limiting','info-limiting_det']:
             self.rho = lambda x : self.alpha + x - x
         elif mode in ['poisson','poisson_det']:
             self.rho = lambda x : self.alpha + x - x
@@ -288,11 +311,14 @@ class NeuralSystem(object):
          
          return covar/(mu1_std*mu2_std)
 
-    def compute_eigenvalues(self, mu ):
+    def compute_eigenvalues(self, mu, rho = None ):
+        if rho is None:
+            rho = self.alpha
+            
         mu_average   = np.mean(mu)
         mu_half_diff = np.diff(mu)*0.5
         mu_prod      = np.prod( mu )
-        delta = mu_half_diff**2  +  mu_prod*self.alpha**2
+        delta = mu_half_diff**2  +  mu_prod*rho**2
         return   self.beta * ( mu_average + np.sqrt(  delta )  ),\
                  self.beta * ( mu_average - np.sqrt( delta  )  )
 
