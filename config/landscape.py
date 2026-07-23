@@ -11,9 +11,9 @@ import pickle
 
 config = {  
             'label'         : 'landscape_hires',
-            'rho'           : "info-limiting_det" ,
-            'alpha'         : np.linspace(0,4,100),
-            'beta'          : 1,
+            'rho'           : "info-limiting" ,
+            'alpha'         : np.linspace(5,15,100),
+            'beta'          : 16,
             'function'      : 'fvm',
             'A'             : 0.17340510276921817, # Low Spike Count
             # 'A'             : 0.7, # Medium Spike Counts

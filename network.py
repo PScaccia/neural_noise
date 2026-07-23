@@ -213,7 +213,7 @@ class NeuralSystem(object):
                    self._lambda_max = self.alpha
                    self._det = self.beta
                    self._lambda_min = self._det/self._lambda_max
-                   
+
                    self.sigma      = lambda x : np.array( [[  self._lambda_max*(self.grad[0](x)**2)  + self._lambda_min*(self.grad[1](x)**2)  , 0   ],
                                                            [  0 ,    self._lambda_max*(self.grad[1](x)**2)  + self._lambda_min*(self.grad[0](x)**2)]])/(np.linalg.norm(grad(x))**2)
                        
